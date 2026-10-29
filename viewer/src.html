@@ -1,0 +1,2215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FS Audit Viewer</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --panel2:#f1f3f6; --line:#dfe3e8; --line2:#eceff3;
+  --text:#1c2430; --muted:#66707d; --faint:#9aa3ad; --accent:#2f5bd3; --accent-bg:#e8eefc;
+  --sel:#e3ebff; --hover:#f3f6fb;
+  --l5:#c92a2a; --l4:#e8590c; --l3:#d39e00; --l2:#2b8a3e; --l1:#9aa3ad; --l0:#ced4da; --lu:#868e96;
+  --deny:#9c36b5; --warn:#b35c00; --crit:#c92a2a; --info:#2f5bd3;
+  --ca:#2f6fd8; --cb:#9c36b5;
+  --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14171c; --panel:#1b1f26; --panel2:#222831; --line:#2f3640; --line2:#262c35;
+    --text:#e4e8ee; --muted:#9aa4b1; --faint:#6b7480; --accent:#7ea2ff; --accent-bg:#233056;
+    --sel:#25335a; --hover:#212833;
+    --l5:#ff6b6b; --l4:#ff922b; --l3:#ffd43b; --l2:#51cf66; --l1:#6b7480; --l0:#3a414b; --lu:#868e96;
+    --deny:#da77f2; --warn:#ffa94d; --crit:#ff6b6b; --info:#7ea2ff;
+  }
+}
+:root[data-theme="dark"]{
+    --bg:#14171c; --panel:#1b1f26; --panel2:#222831; --line:#2f3640; --line2:#262c35;
+    --text:#e4e8ee; --muted:#9aa4b1; --faint:#6b7480; --accent:#7ea2ff; --accent-bg:#233056;
+    --sel:#25335a; --hover:#212833;
+    --l5:#ff6b6b; --l4:#ff922b; --l3:#ffd43b; --l2:#51cf66; --l1:#6b7480; --l0:#3a414b; --lu:#868e96;
+    --deny:#da77f2; --warn:#ffa94d; --crit:#ff6b6b; --info:#7ea2ff;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--text);font:13px/1.4 "Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--accent);cursor:pointer;text-decoration:none}
+a:hover{text-decoration:underline}
+.app{display:grid;grid-template-rows:auto 1fr;height:100vh}
+header.top{display:flex;align-items:center;gap:16px;padding:8px 16px;background:var(--panel);border-bottom:1px solid var(--line);min-height:48px}
+header .brand{font-weight:650;font-size:14px;white-space:nowrap}
+header .meta{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+nav.tabs{display:flex;gap:2px;margin-left:8px}
+nav.tabs button{border:0;background:none;padding:7px 12px;border-radius:6px;color:var(--muted);font-weight:550}
+nav.tabs button:hover{background:var(--hover);color:var(--text)}
+nav.tabs button.on{background:var(--accent-bg);color:var(--accent)}
+.spacer{flex:1}
+.btn{border:1px solid var(--line);background:var(--panel);padding:5px 10px;border-radius:6px}
+.btn:hover{background:var(--hover)}
+.btn.small{padding:2px 8px;font-size:12px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.btn.primary:hover{filter:brightness(1.08);background:var(--accent)}
+main{min-height:0;position:relative}
+.view{position:absolute;inset:0;display:none}
+.view.on{display:grid}
+/* loader */
+#load{display:flex;align-items:center;justify-content:center;position:absolute;inset:0}
+.dropzone{width:min(560px,92vw);border:2px dashed var(--line);border-radius:14px;padding:36px 28px;text-align:center;background:var(--panel)}
+.dropzone.drag{border-color:var(--accent);background:var(--accent-bg)}
+.dropzone h1{font-size:20px;margin:0 0 6px}
+.dropzone p{color:var(--muted);margin:6px 0}
+.dropzone .pick{margin-top:14px;display:inline-block;background:var(--accent);color:#fff;border:0;padding:9px 18px;border-radius:8px;font-weight:600}
+#loadStatus{margin-top:14px;font-family:var(--mono);font-size:12px;color:var(--muted);white-space:pre-line;text-align:left}
+/* layouts */
+.v3{grid-template-columns:300px minmax(0,1fr) 0}
+.v3.det{grid-template-columns:300px minmax(0,1fr) var(--detw,460px)}
+.v2{grid-template-columns:minmax(0,1fr) 0}
+.v2.det{grid-template-columns:minmax(0,1fr) var(--detw,460px)}
+.col{min-height:0;min-width:0;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--panel)}
+.col.main{background:var(--bg)}
+.col.detcol{position:relative}
+.resizer{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:5}
+.resizer::after{content:"";position:absolute;left:3px;top:0;bottom:0;width:2px;background:transparent;transition:background .15s}
+.resizer:hover::after,.resizer.drag::after{background:var(--accent)}
+body.resizing{cursor:col-resize;user-select:none}
+table.t td{overflow-wrap:anywhere}
+table.t td:first-child{overflow-wrap:normal;white-space:nowrap}
+.backbtn{border:1px solid var(--line);background:var(--panel);width:28px;height:28px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-size:16px;line-height:1;color:var(--muted);flex:none}
+.backbtn:hover{background:var(--hover);color:var(--text)}
+.abtag{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:5px;font-size:11px;font-weight:800;color:#fff;flex:none}
+.abtag.a{background:var(--ca)}.abtag.b{background:var(--cb)}
+.row .abtag{width:15px;height:15px;font-size:10px;border-radius:4px}
+.fi.k1,.fi-dot.k1{background:var(--ca)}.fi.k2,.fi-dot.k2{background:var(--cb)}.fi.k3,.fi-dot.k3{background:var(--warn)}.fi.k4,.fi-dot.k4{background:var(--l0)}
+.fi-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin:0 3px 0 8px}
+.cmp-pick{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ppick{display:flex;gap:8px;align-items:center;flex:1;min-width:260px;max-width:460px}
+.ppick .searchres{width:100%;top:calc(100% + 2px)}
+.cmp-cards{display:grid;grid-template-columns:repeat(4,minmax(140px,1fr));gap:8px}
+.cmpc{border:1px solid var(--line);border-left:4px solid var(--l0);border-radius:8px;padding:6px 10px;cursor:pointer;background:var(--panel)}
+.cmpc:hover{border-color:var(--accent)}
+.cmpc.on{background:var(--sel)}
+.cmpc b{font-size:17px;display:block}.cmpc span{font-size:12px;color:var(--text)}.cmpc small{display:block;color:var(--muted);font-size:11px}
+.cmpc.k1{border-left-color:var(--ca)}.cmpc.k2{border-left-color:var(--cb)}.cmpc.k3{border-left-color:var(--warn)}
+.chip.ca{border-color:var(--ca)}.chip.cb{border-color:var(--cb)}
+.placeholder{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted);text-align:center;padding:40px}
+.placeholder .big{font-size:40px;opacity:.35}
+.placeholder b{color:var(--text);font-size:15px;font-weight:600}
+.col:last-child{border-right:0}
+.scroll{overflow:auto;min-height:0;flex:1}
+.pad{padding:12px 16px}
+/* sidebar */
+.side-head{padding:10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.inp{width:100%;padding:6px 9px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)}
+.inp:focus{outline:2px solid var(--accent-bg);border-color:var(--accent)}
+.seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{flex:1;border:0;background:none;padding:4px 6px;font-size:12px;color:var(--muted)}
+.seg button.on{background:var(--accent-bg);color:var(--accent);font-weight:600}
+.plist .pi{padding:6px 12px;border-bottom:1px solid var(--line2);cursor:pointer;display:flex;gap:8px;align-items:center}
+.plist .pi:hover{background:var(--hover)}
+.plist .pi.on{background:var(--sel)}
+.pi .nm{flex:1;min-width:0}
+.pi .nm b{font-weight:550;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pi .nm small{color:var(--muted);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ico{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none;background:var(--panel2);color:var(--muted)}
+.ico.user{background:#e3ebff;color:#2f5bd3}.ico.group{background:#e6f4ea;color:#2b8a3e}.ico.wk{background:#fff4e0;color:#b35c00}.ico.orphan{background:#fde8e8;color:#c92a2a}.ico.computer{background:#eee;color:#555}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .ico.user{background:#233056;color:#9db6ff}:root:not([data-theme="light"]) .ico.group{background:#1f3a28;color:#69db7c}:root:not([data-theme="light"]) .ico.wk{background:#3d2d14;color:#ffa94d}:root:not([data-theme="light"]) .ico.orphan{background:#40191c;color:#ff8787}}
+.tag{display:inline-block;font-size:11px;padding:0 6px;border-radius:9px;background:var(--panel2);color:var(--muted);border:1px solid var(--line);white-space:nowrap;line-height:17px}
+.tag.off{color:var(--crit);border-color:var(--crit);background:transparent}
+.tag.deny{color:var(--deny);border-color:var(--deny);background:transparent}
+.tag.inh{color:var(--warn);border-color:var(--warn);background:transparent}
+.tag.err{color:var(--crit);border-color:var(--crit);background:transparent}
+/* principal header */
+.phead{padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;gap:8px}
+.phead h2{margin:0;font-size:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.phead .sub{color:var(--muted);font-size:12px}
+.phead .row2{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.stat{display:flex;gap:6px;align-items:baseline}
+.stat b{font-size:15px}
+.stat span{color:var(--muted);font-size:12px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{font-size:11.5px;padding:1px 8px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);cursor:pointer;white-space:nowrap}
+.chip:hover{border-color:var(--accent)}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.toolbar:empty{display:none}
+.toolbar label{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px}
+.toolbar select{padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:var(--panel2)}
+.searchwrap{position:relative}
+.searchres{position:absolute;top:100%;left:0;z-index:20;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.15);max-height:420px;overflow:auto;width:min(720px,70vw);display:none}
+.searchres.on{display:block}
+.searchres div{padding:5px 10px;cursor:pointer;border-bottom:1px solid var(--line2);font-size:12px}
+.searchres div:hover{background:var(--hover)}
+.searchres .p{color:var(--muted);font-family:var(--mono);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* tree */
+.tree{padding:6px 0 40px;font-size:13px}
+.row{display:flex;align-items:center;gap:6px;padding:2px 10px 2px 0;white-space:nowrap;cursor:default;min-height:24px}
+.row:hover{background:var(--hover)}
+.row.sel{background:var(--sel)}
+.row .tg{width:18px;height:18px;flex:none;border:0;background:none;padding:0;color:var(--faint);font-size:10px;display:inline-flex;align-items:center;justify-content:center;border-radius:4px}
+.row .tg:hover{background:var(--panel2);color:var(--text)}
+.row .tg.none{visibility:hidden}
+.row .fi{width:14px;height:11px;flex:none;border-radius:2px;background:var(--l0);position:relative;top:0}
+.row .fi::before{content:"";position:absolute;left:0;top:-3px;width:6px;height:4px;border-radius:2px 2px 0 0;background:inherit}
+.row .fn{cursor:pointer;overflow:hidden;text-overflow:ellipsis}
+.row .fn:hover{text-decoration:underline}
+.row.pass .fn{color:var(--faint)}
+.row .via{color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis}
+.row .cnt{color:var(--faint);font-size:11.5px}
+.row.files{color:var(--muted);font-style:italic;cursor:default}
+.row.files:hover{background:none}
+.row.more button{border:0;background:none;color:var(--accent);padding:0}
+.lvb{display:inline-block;font-size:11px;font-weight:600;padding:0 7px;border-radius:9px;line-height:17px;color:#fff;white-space:nowrap}
+.lv5{background:var(--l5)}.lv4{background:var(--l4)}.lv3{background:var(--l3);color:#222}.lv2{background:var(--l2)}.lv1{background:var(--l1)}.lv0{background:var(--l0);color:var(--text)}.lvu{background:var(--lu)}
+.fi.lv5{background:var(--l5)}.fi.lv4{background:var(--l4)}.fi.lv3{background:var(--l3)}.fi.lv2{background:var(--l2)}.fi.lv1,.fi.lv0{background:var(--l0)}.fi.lvu{background:var(--lu)}
+.legend{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+/* details */
+.det-head{padding:10px 14px;border-bottom:1px solid var(--line);display:flex;gap:8px;align-items:flex-start}
+.det-head .t{flex:1;min-width:0}
+.det-head .t b{display:block;font-size:14px;word-break:break-word}
+.det-head .t .p{font-family:var(--mono);font-size:11px;color:var(--muted);word-break:break-all;margin-top:3px}
+.x{border:0;background:none;font-size:18px;line-height:1;color:var(--muted);padding:2px 6px;border-radius:6px}
+.x:hover{background:var(--hover)}
+.sec{padding:10px 14px;border-bottom:1px solid var(--line2)}
+.sec h4{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:650}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:3px 10px;font-size:12.5px}
+.kv div:nth-child(odd){color:var(--muted)}
+table.t{width:100%;border-collapse:collapse;font-size:12px}
+table.t th{text-align:left;font-weight:600;color:var(--muted);padding:4px 6px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:1}
+table.t td{padding:4px 6px;border-bottom:1px solid var(--line2);vertical-align:top}
+table.t tr.hit td{background:var(--sel)}
+table.t tr.denyrow td:first-child{color:var(--deny);font-weight:650}
+.mono{font-family:var(--mono);font-size:11.5px}
+.muted{color:var(--muted)}
+.small{font-size:11.5px}
+.ulist .lvgrp{margin:8px 0 4px;display:flex;gap:8px;align-items:center}
+.ulist .u{display:flex;gap:8px;padding:2px 0;font-size:12.5px}
+.ulist .u .n{min-width:0;flex:none;max-width:55%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ulist .u .w{color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* graph */
+.graphwrap{padding:16px}
+svg.g text{font-size:12px;fill:var(--text)}
+svg.g .lnk{fill:none;stroke-width:1.6;opacity:.55}
+svg.g .lnk.dim{opacity:.08}
+svg.g .lnk.hi{opacity:1;stroke-width:2.4}
+svg.g .nb{fill:var(--panel);stroke:var(--line)}
+svg.g .node{cursor:pointer}
+svg.g .node:hover .nb{stroke:var(--accent)}
+svg.g .node.dimn{opacity:.3}
+svg.g .node.pinned .nb{stroke:var(--accent);stroke-width:2}
+svg.g .fb{fill:transparent}
+svg.g .fnode:hover .fb{fill:var(--hover)}
+svg.g .fnode.pinned .fb{fill:var(--sel);stroke:var(--accent)}
+svg.g .open{fill:var(--accent);font-size:13px;font-weight:700;cursor:pointer}
+svg.g .open:hover{fill:var(--text)}
+.pininfo{min-height:18px;margin:0 0 6px;color:var(--accent);font-size:12.5px;font-weight:550}
+svg.g .colh{font-size:11px;fill:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:650}
+svg.g .sm{font-size:10.5px;fill:var(--muted)}
+/* matrix */
+.mxwrap{padding:0 0 40px 0}
+.mx{border-collapse:separate;border-spacing:0;font-size:12px}
+.mx th,.mx td{padding:0}
+.mx thead th{position:sticky;top:0;background:var(--bg);z-index:3;vertical-align:bottom}
+.mx thead th.corner{left:0;z-index:4;text-align:left;vertical-align:bottom;padding:0 10px 6px 12px;color:var(--muted);font-weight:500;font-size:11.5px}
+.mx thead th.rh{pointer-events:none;height:var(--mxh,150px);width:26px;min-width:26px;max-width:26px;white-space:nowrap}
+.mx thead th.rh>div{transform:translate(13px,-4px) rotate(-50deg);transform-origin:bottom left;width:26px}
+.mx thead th.rh>div>span{display:inline-block;max-width:var(--mxlw,200px);overflow:hidden;text-overflow:ellipsis;padding:1px 4px;border-radius:4px;cursor:pointer;font-weight:550;vertical-align:bottom;line-height:16px;pointer-events:auto;background:var(--bg)}
+.mx thead th.rh>div>span:hover{background:var(--accent-bg);color:var(--accent)}
+.mx thead th.rh.self>div>span{color:var(--accent)}
+.mx thead th.rh.hi>div>span{background:var(--accent);color:#fff}
+.mx thead th.rh.dis>div>span{text-decoration:line-through;color:var(--muted)}
+.mx tbody th{position:sticky;left:0;background:var(--bg);z-index:2;text-align:left;font-weight:500;padding:0 10px 0 12px;white-space:nowrap;max-width:var(--mxrw,340px);overflow:hidden;text-overflow:ellipsis;height:24px}
+.mx tbody tr:hover>th,.mx tbody tr.hi>th{color:var(--accent);background:var(--hover)}
+.mx tbody tr:hover>td{background:var(--hover)}
+.mx td .c{width:22px;height:20px;margin:2px;border-radius:3px;position:relative;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:rgba(255,255,255,.92)}
+.mx td .c.lv3{color:#4a3a00}
+.mx td .c.lv0{background:var(--line2);color:transparent}
+.mx td .c.lv1{background:var(--line2);color:var(--faint)}
+.mx td .c.lvu{color:#fff}
+.mx td .c:hover{outline:2px solid var(--accent);outline-offset:1px}
+.mx td .c.deeper::after{content:"";position:absolute;right:2px;top:2px;width:6px;height:6px;border-radius:50%;background:var(--accent);border:1px solid var(--panel)}
+.mx td.colhi{background:var(--hover)}
+.mx .tree-tg{display:inline-flex;width:16px;justify-content:center;color:var(--faint);cursor:pointer;font-size:10px;margin-right:2px}
+.mx .tree-tg:hover{color:var(--text)}
+.mx .tree-tg.none{visibility:hidden}
+.mx .fname{cursor:pointer}
+.mx .fname:hover{text-decoration:underline}
+.mx .fcnt{color:var(--faint);font-size:11px;margin-left:6px;font-weight:400}
+.mx tr.flash>th{animation:flash 1.6s ease-out}
+@keyframes flash{0%{background:var(--accent-bg)}100%{background:var(--bg)}}
+.mx tr.more>th button{border:0;background:none;color:var(--accent);padding:0;font-size:12px}
+.dept{font-size:11px;color:var(--muted);padding-top:10px!important;text-transform:uppercase;letter-spacing:.04em;height:auto!important}
+.crumbs{display:flex;align-items:center;gap:2px;flex-wrap:wrap;font-size:12.5px;padding:6px 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.crumbs a{padding:2px 6px;border-radius:5px;color:var(--text)}
+.crumbs a:hover{background:var(--hover);text-decoration:none}
+.crumbs a.cur{font-weight:650;color:var(--accent)}
+.crumbs .sep{color:var(--faint)}
+.mxbar{display:flex;flex-direction:column}
+.mxbar .seg button{white-space:nowrap;padding:4px 10px}
+.mxnote{color:var(--muted);font-size:12px;padding:8px 16px 0}
+/* issues */
+.issues{max-width:1200px;margin:0 auto;padding:16px 20px 60px}
+.issues h2{margin:4px 0 4px;font-size:18px}
+.sumgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin:12px 0 18px}
+.sumc{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer}
+.sumc:hover{border-color:var(--accent)}
+.sumc b{font-size:20px;display:block}
+.sumc span{color:var(--muted);font-size:12px}
+.sumc.crit b{color:var(--crit)}.sumc.warn b{color:var(--warn)}.sumc.info b{color:var(--info)}
+details.iss{background:var(--panel);border:1px solid var(--line);border-radius:10px;margin:10px 0;overflow:hidden}
+details.iss>summary{padding:10px 14px;cursor:pointer;display:flex;gap:10px;align-items:center;list-style:none}
+details.iss>summary::-webkit-details-marker{display:none}
+details.iss>summary .sev{width:8px;height:8px;border-radius:50%;flex:none}
+.sev.crit{background:var(--crit)}.sev.warn{background:var(--warn)}.sev.info{background:var(--info)}
+details.iss>summary b{flex:1}
+details.iss .body{padding:0 14px 12px}
+details.iss .desc{color:var(--muted);margin:0 0 8px;max-width:900px}
+details.iss .tblwrap{max-height:460px;overflow:auto;border:1px solid var(--line2);border-radius:6px}
+.empty{color:var(--muted);padding:40px;text-align:center}
+.hint{color:var(--muted);font-size:12px}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:12.5px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:99}
+.toast.on{opacity:.92}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">FS Audit</div>
+    <nav class="tabs" id="tabs" hidden>
+      <button data-tab="tree" class="on">Principal access</button>
+      <button data-tab="graph">Links</button>
+      <button data-tab="folders">Folders</button>
+      <button data-tab="matrix">Matrix</button>
+      <button data-tab="compare">Compare</button>
+      <button data-tab="issues">Findings</button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="meta" id="meta"></div>
+    <button class="btn small" id="themeBtn" title="Theme">◐</button>
+    <button class="btn small" id="reloadBtn" hidden>Open another ZIP</button>
+  </header>
+  <main id="main">
+    <div id="load">
+      <div class="dropzone" id="drop">
+        <h1>File server permissions audit</h1>
+        <p>Drop the ZIP from <span class="mono">Collect-FSAudit.ps1</span> here (or all CSV files from it).</p>
+        <p class="hint">Data is processed only in this browser and is not sent anywhere.</p>
+        <button class="pick" id="pickBtn">Choose file…</button>
+        <input type="file" id="file" accept=".zip,.csv,.json" multiple hidden>
+        <div id="loadStatus"></div>
+      </div>
+    </div>
+
+    <!-- principal tree -->
+    <section class="view v3" id="v-tree">
+      <div class="col" id="sideTree"></div>
+      <div class="col main">
+        <div id="pheadTree"></div>
+        <div class="toolbar" id="tbTree"></div>
+        <div class="scroll"><div class="tree" id="treeP"></div></div>
+      </div>
+      <div class="col detcol" id="detTree"></div>
+    </section>
+
+    <!-- graph -->
+    <section class="view v3" id="v-graph">
+      <div class="col" id="sideGraph"></div>
+      <div class="col main">
+        <div id="pheadGraph"></div>
+        <div class="toolbar" id="tbGraph"></div>
+        <div class="scroll"><div class="graphwrap" id="graph"></div></div>
+      </div>
+      <div class="col"></div>
+    </section>
+
+    <!-- folders -->
+    <section class="view v2" id="v-folders">
+      <div class="col main">
+        <div class="toolbar" id="tbFolders"></div>
+        <div class="scroll"><div class="tree" id="treeF"></div></div>
+      </div>
+      <div class="col detcol" id="detFolders"></div>
+    </section>
+
+    <!-- matrix -->
+    <section class="view" id="v-matrix" style="grid-template-rows:auto 1fr">
+      <div class="toolbar" id="tbMatrix"></div>
+      <div class="scroll" id="matrix"></div>
+    </section>
+
+    <!-- compare -->
+    <section class="view v2" id="v-compare">
+      <div class="col main">
+        <div id="cmpHead"></div>
+        <div class="toolbar" id="tbCmp"></div>
+        <div class="scroll"><div class="tree" id="treeC"></div></div>
+      </div>
+      <div class="col detcol" id="detCompare"></div>
+    </section>
+
+    <!-- issues -->
+    <section class="view" id="v-issues">
+      <div class="scroll"><div class="issues" id="issues"></div></div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>/*JSZIP*/</script>
+<script>
+'use strict';
+/* ====================================================================
+   Helpers
+   ==================================================================== */
+const $ = (s, r = document) => r.querySelector(s);
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs) {
+    const v = attrs[k];
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k === 'style') e.style.cssText = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (k === 'html') e.innerHTML = v;
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat(Infinity)) {
+    if (k == null || k === false) continue;
+    e.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  }
+  return e;
+}
+const svgNS = 'http://www.w3.org/2000/svg';
+function sv(tag, attrs, ...kids) {
+  const e = document.createElementNS(svgNS, tag);
+  if (attrs) for (const k in attrs) {
+    if (attrs[k] == null) continue;
+    if (k.startsWith('on')) e.addEventListener(k.slice(2), attrs[k]); else e.setAttribute(k, attrs[k]);
+  }
+  for (const k of kids.flat()) if (k != null) e.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return e;
+}
+const fmtN = n => (n ?? 0).toLocaleString('en-US');
+function plural(n, f) { return n === 1 ? f[0] : f[1]; }
+const filesTxt = n => `${fmtN(n)} ${plural(n, ['file', 'files'])}`;
+const foldersTxt = n => `${fmtN(n)} ${plural(n, ['folder', 'folders'])}`;
+function fmtBytes(b) { if (!(b > 0)) return '0 B'; const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; } return (i ? b.toFixed(1) : b) + ' ' + u[i]; }
+function fmtDate(s) { if (!s) return ''; const d = new Date(s); if (isNaN(d)) return s; return d.toLocaleDateString('en-GB') + (s.length > 10 ? ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : ''); }
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), 1800); }
+const tick = () => new Promise(r => setTimeout(r, 0));
+
+function parseCSV(t) {
+  if (t.charCodeAt(0) === 0xFEFF) t = t.slice(1);
+  const rows = []; let row = []; let i = 0; const n = t.length;
+  if (!n) return rows;
+  while (i < n) {
+    let field, c = t.charCodeAt(i);
+    if (c === 34) {
+      let j = i + 1, s = '';
+      for (;;) {
+        const k = t.indexOf('"', j);
+        if (k < 0) { s += t.slice(j); i = n; break; }
+        s += t.slice(j, k);
+        if (t.charCodeAt(k + 1) === 34) { s += '"'; j = k + 2; } else { i = k + 1; break; }
+      }
+      field = s;
+    } else {
+      let j = i;
+      while (j < n) { const d = t.charCodeAt(j); if (d === 44 || d === 10 || d === 13) break; j++; }
+      field = t.slice(i, j); i = j;
+    }
+    row.push(field);
+    c = t.charCodeAt(i);
+    if (c === 44) { i++; if (i >= n) row.push(''); continue; }
+    if (c === 13) i++;
+    if (t.charCodeAt(i) === 10) i++;
+    rows.push(row); row = [];
+  }
+  if (row.length) rows.push(row);
+  return rows;
+}
+function csvObjects(t) {
+  const rows = parseCSV(t || '');
+  if (!rows.length) return [];
+  const h = rows[0];
+  const out = [];
+  for (let r = 1; r < rows.length; r++) {
+    const a = rows[r]; if (a.length === 1 && a[0] === '') continue;
+    const o = {}; for (let k = 0; k < h.length; k++) o[h[k]] = a[k] ?? '';
+    out.push(o);
+  }
+  return out;
+}
+function downloadCSV(name, header, rows) {
+  const esc = v => { v = v == null ? '' : String(v); return /[",\n\r;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const txt = '﻿' + [header, ...rows].map(r => r.map(esc).join(',')).join('\r\n');
+  const a = el('a', { href: URL.createObjectURL(new Blob([txt], { type: 'text/csv;charset=utf-8' })), download: name });
+  document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+const safeName = s => String(s).replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80);
+
+/* ====================================================================
+   Rights / levels
+   ==================================================================== */
+const LV = {
+  '-1': { n: 'no data', c: 'lvu', d: 'ACL could not be read during collection' },
+  0: { n: 'none', c: 'lv0', d: 'No access' },
+  1: { n: 'traverse', c: 'lv1', d: 'Traverse only - cannot open the folder, but can pass through to subfolders' },
+  2: { n: 'read', c: 'lv2', d: 'List contents and read' },
+  3: { n: 'write', c: 'lv3', d: 'Create/write without delete' },
+  4: { n: 'modify', c: 'lv4', d: 'Modify, including delete' },
+  5: { n: 'full', c: 'lv5', d: 'Full control, including changing permissions and owner' },
+};
+const THR_OPTS = [[2, 'read and above'], [3, 'write and above'], [4, 'modify and above'], [5, 'full only']];
+const lvBadge = (l, extra) => el('span', { class: 'lvb ' + LV[l].c, title: LV[l].d }, LV[l].n, extra || '');
+function mapGeneric(m) {
+  let r = m & 0x0FFFFFFF;
+  if (m & 0x10000000) r |= 0x1F01FF;
+  if (m & 0x80000000) r |= 0x120089;
+  if (m & 0x40000000) r |= 0x120116;
+  if (m & 0x20000000) r |= 0x1200A0;
+  return r >>> 0;
+}
+function levelOf(g) {
+  if ((g & 0x1F01FF) === 0x1F01FF) return 5;
+  const r = g & 1, w = g & 6, del = g & 0x10000;
+  if (r && w && del) return 4;
+  if (w) return 3;
+  if (r) return 2;
+  if (g & 0x20) return 1;
+  return 0;
+}
+function rightsName(m, raw) {
+  const k = { 0x1F01FF: 'Full control', 0x1301BF: 'Modify', 0x1200A9: 'Read & execute', 0x120089: 'Read', 0x100116: 'Write', 0x120116: 'Write', 0x1201BF: 'Read, execute, write', 0x10000: 'Delete', 0x100021: 'List folder', 0x1200A0: 'Execute/traverse' }[m];
+  return k || raw || ('0x' + m.toString(16));
+}
+function applyTo(a) {
+  let t;
+  if (a.ci && a.oi) t = a.io ? 'subfolders and files only' : 'this folder, subfolders and files';
+  else if (a.ci) t = a.io ? 'subfolders only' : 'this folder and subfolders';
+  else if (a.oi) t = a.io ? 'files only' : 'this folder and files';
+  else t = 'this folder only';
+  if (a.np) t += ' (1 level)';
+  return t;
+}
+
+const WK = { EVERYONE: 'S-1-1-0', AUTH: 'S-1-5-11', NETWORK: 'S-1-5-2', SYSTEM: 'S-1-5-18', CREATOR: 'S-1-3-0', OWNERRIGHTS: 'S-1-3-4', BADMINS: 'S-1-5-32-544', BUSERS: 'S-1-5-32-545' };
+const WK_NAMES = { 'S-1-1-0': 'Everyone', 'S-1-5-11': 'NT AUTHORITY\\Authenticated Users', 'S-1-5-2': 'NT AUTHORITY\\NETWORK', 'S-1-5-4': 'NT AUTHORITY\\INTERACTIVE', 'S-1-5-18': 'NT AUTHORITY\\SYSTEM', 'S-1-3-0': 'CREATOR OWNER', 'S-1-3-4': 'OWNER RIGHTS', 'S-1-5-32-544': 'BUILTIN\\Administrators', 'S-1-5-32-545': 'BUILTIN\\Users' };
+
+/* ====================================================================
+   Data model
+   ==================================================================== */
+let D = null;
+
+async function loadFiles(fileList) {
+  const status = $('#loadStatus');
+  const log = s => { status.textContent += s + '\n'; };
+  status.textContent = '';
+  const files = {};
+  const t0 = performance.now();
+  try {
+    for (const f of fileList) {
+      if (/\.zip$/i.test(f.name)) {
+        log('Unpacking ' + f.name + '…'); await tick();
+        const zip = await JSZip.loadAsync(f);
+        for (const name of Object.keys(zip.files)) {
+          const z = zip.files[name]; if (z.dir) continue;
+          const base = name.split('/').pop().toLowerCase();
+          if (/\.(csv|json|log)$/.test(base)) files[base] = await z.async('string');
+        }
+      } else {
+        files[f.name.toLowerCase()] = await f.text();
+      }
+    }
+    if (!files['folders.csv'] || !files['acl_entries.csv']) throw new Error('folders.csv / acl_entries.csv not found');
+    log('Parsing CSV…'); await tick();
+    D = buildData(files, log);
+    log(`Done in ${((performance.now() - t0) / 1000).toFixed(1)} s`); await tick();
+    startApp();
+  } catch (e) {
+    console.error(e);
+    log('ERROR: ' + (e && e.message || e));
+  }
+}
+
+function buildData(files, log) {
+  const d = {};
+  d.meta = {}; try { if (files['meta.json']) d.meta = JSON.parse(files['meta.json'].replace(/^﻿/, '')); } catch (e) {}
+
+  /* ---- folders ---- */
+  const rows = parseCSV(files['folders.csv']);
+  const h = rows[0]; const ix = {}; h.forEach((k, i) => ix[k] = i);
+  const need = ['Id', 'ParentId', 'Depth', 'Name', 'OwnerSid', 'InheritanceDisabled', 'AclId', 'ExplicitAceCount', 'FileCount', 'FileBytes', 'LastWriteUtc', 'Error'];
+  for (const k of need) if (!(k in ix)) throw new Error('folders.csv: missing column ' + k);
+  let maxId = 0;
+  for (let r = 1; r < rows.length; r++) { const v = +rows[r][ix.Id]; if (v > maxId) maxId = v; }
+  const N = maxId;
+  d.N = N;
+  d.parent = new Int32Array(N + 1); d.depth = new Uint8Array(N + 1); d.acl = new Int16Array(N + 1);
+  d.files = new Int32Array(N + 1).fill(-1); d.bytes = new Float64Array(N + 1); d.owner = new Int32Array(N + 1).fill(-1);
+  d.inhOff = new Uint8Array(N + 1); d.explicit = new Int16Array(N + 1); d.exists = new Uint8Array(N + 1);
+  d.name = new Array(N + 1); d.lw = new Array(N + 1); d.err = new Map(); d.ownerSids = []; const ownerIx = new Map();
+  for (let r = 1; r < rows.length; r++) {
+    const a = rows[r]; if (a.length < h.length) continue;
+    const id = +a[ix.Id];
+    d.exists[id] = 1;
+    d.parent[id] = +a[ix.ParentId]; d.depth[id] = +a[ix.Depth]; d.name[id] = a[ix.Name];
+    d.acl[id] = a[ix.AclId] ? +a[ix.AclId] : 0;
+    if (a[ix.FileCount] !== '') d.files[id] = +a[ix.FileCount];
+    d.bytes[id] = +a[ix.FileBytes] || 0;
+    const o = a[ix.OwnerSid];
+    if (o) { let k = ownerIx.get(o); if (k === undefined) { k = d.ownerSids.length; d.ownerSids.push(o); ownerIx.set(o, k); } d.owner[id] = k; }
+    d.inhOff[id] = a[ix.InheritanceDisabled] === 'True' ? 1 : 0;
+    d.explicit[id] = +a[ix.ExplicitAceCount] || 0;
+    d.lw[id] = a[ix.LastWriteUtc];
+    if (a[ix.Error]) d.err.set(id, a[ix.Error]);
+  }
+  rows.length = 0;
+  d.root = 0; for (let i = 1; i <= N; i++) if (d.exists[i] && d.parent[i] === 0) { d.root = i; break; }
+  log(`Folders: ${fmtN(N)}`);
+
+  /* ---- children (CSR, sorted by name) ---- */
+  const cnt = new Int32Array(N + 2);
+  for (let i = 1; i <= N; i++) if (d.exists[i] && d.parent[i]) cnt[d.parent[i]]++;
+  d.kStart = new Int32Array(N + 2);
+  for (let i = 1; i <= N + 1; i++) d.kStart[i] = d.kStart[i - 1] + cnt[i - 1];
+  // kStart[i] = start index of kids of i
+  const pos = d.kStart.slice(); d.kids = new Int32Array(d.kStart[N + 1]);
+  for (let i = 1; i <= N; i++) if (d.exists[i] && d.parent[i]) d.kids[pos[d.parent[i]]++] = i;
+  const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  for (let i = 1; i <= N; i++) {
+    const s = d.kStart[i], e = d.kStart[i + 1];
+    if (e - s > 1) { const seg = Array.from(d.kids.subarray(s, e)); seg.sort((x, y) => coll.compare(d.name[x], d.name[y])); d.kids.set(seg, s); }
+  }
+  // order by depth asc (for bottom-up passes)
+  const byDepth = []; for (let i = 1; i <= N; i++) if (d.exists[i]) (byDepth[d.depth[i]] ||= []).push(i);
+  d.order = Int32Array.from(byDepth.flat());
+  d.subSize = new Int32Array(N + 1);
+  for (let k = d.order.length - 1; k >= 0; k--) { const i = d.order[k]; d.subSize[i] += 1; const p = d.parent[i]; if (p) d.subSize[p] += d.subSize[i]; }
+
+  /* ---- ACLs ---- */
+  const aclRows = csvObjects(files['acl_entries.csv']);
+  d.ACL = []; d.aclIds = [];
+  for (const r of aclRows) {
+    const id = +r.AclId; if (!d.ACL[id]) { d.ACL[id] = []; d.aclIds.push(id); }
+    const fl = r.InheritanceFlags || '', pf = r.PropagationFlags || '';
+    const raw = +r.RightsMask;
+    d.ACL[id].push({ ord: +r.Order, sid: r.Sid, allow: r.AccessType === 'Allow', raw, m: mapGeneric(raw), rights: r.Rights, inh: r.IsInherited === 'True', ci: fl.includes('ContainerInherit'), oi: fl.includes('ObjectInherit'), io: pf.includes('InheritOnly'), np: pf.includes('NoPropagateInherit') });
+  }
+  for (const id of d.aclIds) d.ACL[id].sort((a, b) => a.ord - b.ord);
+  for (const r of csvObjects(files['acl_special.csv'])) { const id = +r.AclId; if (!d.ACL[id]) { d.ACL[id] = []; d.aclIds.push(id); } d.ACL[id].special = r.Kind; }
+  d.aclFolders = new Int32Array(Math.max(0, ...d.aclIds) + 1);
+  for (let i = 1; i <= N; i++) if (d.acl[i]) d.aclFolders[d.acl[i]]++;
+  log(`Unique ACLs: ${d.aclIds.length}`);
+
+  /* ---- principals ---- */
+  const P = new Map(); d.P = P;
+  const sidNames = new Map(); for (const r of csvObjects(files['sids.csv'])) if (r.Name) sidNames.set(r.Sid, r.Name);
+  const domSid = (d.meta.Counts && d.meta.Counts.DomainSid) || '';
+  d.domSid = domSid;
+  let nb = '';
+  for (const [s, n] of sidNames) if (domSid && s.startsWith(domSid + '-') && n.includes('\\')) { nb = n.split('\\')[0]; break; }
+  if (!nb && d.meta.Counts && d.meta.Counts.Domain) nb = d.meta.Counts.Domain.split('.')[0].toUpperCase();
+  d.nb = nb;
+  const users = csvObjects(files['ad_users.csv']), groups = csvObjects(files['ad_groups.csv']), comps = csvObjects(files['ad_computers.csv']);
+  for (const u of users) P.set(u.Sid, { sid: u.Sid, type: 'user', sam: u.SamAccountName, name: u.DisplayName || u.SamAccountName, full: (nb ? nb + '\\' : '') + u.SamAccountName, enabled: u.Enabled !== 'False', lastLogon: u.LastLogonDate, dept: u.Department, title: u.Title, desc: u.Description, created: u.WhenCreated, pwdNever: u.PasswordNeverExpires === 'True', dn: u.DistinguishedName });
+  for (const g of groups) {
+    const builtin = g.Sid.startsWith('S-1-5-32-');
+    P.set(g.Sid, { sid: g.Sid, type: 'group', sam: g.SamAccountName, name: (builtin ? 'BUILTIN\\' : '') + g.SamAccountName, full: sidNames.get(g.Sid) || ((builtin ? 'BUILTIN' : nb) + '\\' + g.SamAccountName), enabled: true, scope: g.GroupScope, cat: g.GroupCategory, desc: g.Description, managedBy: g.ManagedBy, dn: g.DistinguishedName });
+  }
+  for (const c of comps) P.set(c.Sid, { sid: c.Sid, type: 'computer', sam: c.SamAccountName, name: c.SamAccountName, full: (nb ? nb + '\\' : '') + c.SamAccountName, enabled: c.Enabled !== 'False', lastLogon: c.LastLogonDate, dn: c.DistinguishedName });
+  const ensure = sid => {
+    if (!sid || P.has(sid)) return;
+    const n = sidNames.get(sid) || WK_NAMES[sid];
+    if (n) P.set(sid, { sid, type: 'wk', name: n, full: n, enabled: true });
+    else P.set(sid, { sid, type: 'orphan', name: 'Unknown SID …' + sid.split('-').pop(), full: sid, enabled: false });
+  };
+  for (const id of d.aclIds) for (const a of d.ACL[id]) ensure(a.sid);
+  for (const s of d.ownerSids) ensure(s);
+  for (const s of [WK.EVERYONE, WK.AUTH, WK.NETWORK]) ensure(s);
+  P.set('__ANY__', { sid: '__ANY__', type: 'wk', name: 'Any domain user', full: 'Any domain user (Everyone + Authenticated Users + Domain Users + Users)', enabled: true });
+  d.users = users.map(u => u.Sid);
+
+  /* ---- memberships ---- */
+  d.parentsOf = new Map(); d.membersOf = new Map();
+  for (const m of csvObjects(files['ad_members.csv'])) {
+    if (!m.MemberSid || !m.GroupSid) continue;
+    ensure(m.MemberSid); ensure(m.GroupSid);
+    (d.parentsOf.get(m.MemberSid) || d.parentsOf.set(m.MemberSid, []).get(m.MemberSid)).push(m.GroupSid);
+    (d.membersOf.get(m.GroupSid) || d.membersOf.set(m.GroupSid, []).get(m.GroupSid)).push(m.MemberSid);
+  }
+  for (const m of csvObjects(files['local_members.csv'])) {
+    if (!m.MemberSid || !m.GroupSid) continue;
+    ensure(m.MemberSid); ensure(m.GroupSid);
+    (d.parentsOf.get(m.MemberSid) || d.parentsOf.set(m.MemberSid, []).get(m.MemberSid)).push(m.GroupSid);
+    (d.membersOf.get(m.GroupSid) || d.membersOf.set(m.GroupSid, []).get(m.GroupSid)).push(m.MemberSid);
+  }
+  for (const r of csvObjects(files['local_groups.csv'])) if (P.get(r.Sid)?.type === 'wk') P.get(r.Sid).type = 'group';
+
+  /* ---- shares ---- */
+  d.shares = csvObjects(files['shares.csv']);
+  d.shareAccess = csvObjects(files['share_access.csv']);
+  d.errorsRows = csvObjects(files['errors.csv']);
+  const rootPath = (d.name[d.root] || '').toLowerCase().replace(/\\+$/, '');
+  d.share = null;
+  for (const s of d.shares) {
+    if (s.Special === 'True' || !s.Path) continue;
+    const p = s.Path.toLowerCase().replace(/\\+$/, '');
+    if (rootPath === p || rootPath.startsWith(p + '\\')) { if (!d.share || p.length > d.share.Path.length) d.share = s; }
+  }
+  d.shareAces = d.share ? d.shareAccess.filter(a => a.ShareName === d.share.Name) : [];
+
+  /* ---- explicit ACE points per SID ---- */
+  d.explicitBySid = new Map();
+  for (let i = 1; i <= N; i++) {
+    const a = d.acl[i]; if (!a || !d.explicit[i]) continue;
+    for (const ace of d.ACL[a]) if (!ace.inh) {
+      let arr = d.explicitBySid.get(ace.sid); if (!arr) d.explicitBySid.set(ace.sid, arr = []);
+      arr.push({ f: i, ace });
+    }
+  }
+  d.aclSids = new Set(); for (const id of d.aclIds) for (const a of d.ACL[id]) d.aclSids.add(a.sid);
+
+  /* ---- tokens for all users ---- */
+  d.tok = new Map(); d.cache = new Map();
+  for (const s of d.users) d.tok.set(s, buildToken(s, d));
+  d.pathCache = new Map();
+  return d;
+}
+
+/* token: Map sid -> previous sid in chain (null for self, '*' implicit) */
+function buildToken(sid, d = D) {
+  const via = new Map(); const q = [];
+  const add = (s, prev) => { if (!via.has(s)) { via.set(s, prev); q.push(s); } };
+  add(sid, null);
+  const p = d.P.get(sid);
+  if (p && (p.type === 'user' || p.type === 'computer')) { add(WK.EVERYONE, '*'); add(WK.AUTH, '*'); add(WK.NETWORK, '*'); }
+  if (sid === '__ANY__') { add(WK.EVERYONE, '*'); add(WK.AUTH, '*'); add(WK.NETWORK, '*'); if (d.domSid) add(d.domSid + '-513', '*'); }
+  for (let k = 0; k < q.length; k++) for (const g of d.parentsOf.get(q[k]) || []) add(g, q[k]);
+  return via;
+}
+function chainOf(tok, sid) {
+  const out = []; let s = sid, guard = 0;
+  while (s != null && s !== '*' && guard++ < 50) { out.unshift(s); s = tok.get(s); }
+  return out; // [principal, ..., sid]
+}
+function shareCap(tok, sid) {
+  if (!D.share || !D.shareAces.length) return 5;
+  // Groups/well-known principals: real members always also carry Everyone/Authenticated Users/NETWORK
+  const pt = sid ? D.P.get(sid)?.type : 'user';
+  if (pt && pt !== 'user' && pt !== 'computer') { tok = new Map(tok); for (const w of [WK.EVERYONE, WK.AUTH, WK.NETWORK]) if (!tok.has(w)) tok.set(w, '*'); }
+  let allow = -1, denyCap = 5;
+  const rl = r => r === 'Full' ? 5 : r === 'Change' ? 4 : r === 'Read' ? 2 : 0;
+  for (const a of D.shareAces) {
+    if (!a.Sid || !tok.has(a.Sid)) continue;
+    const l = rl(a.AccessRight);
+    if (a.AccessControlType === 'Deny') denyCap = Math.min(denyCap, l === 5 || l === 4 ? (l === 5 ? 0 : 2) : 0);
+    else allow = Math.max(allow, l);
+  }
+  return Math.max(0, Math.min(allow < 0 ? 0 : allow, denyCap));
+}
+function evalAcl(aclId, tok) {
+  const aces = D.ACL[aclId];
+  if (!aces) return { g: 0, d: 0, lv: -1, gs: [], ds: [] };
+  if (aces.special === 'NULL_DACL') return { g: 0x1F01FF, d: 0, lv: 5, gs: [], ds: [], nullDacl: true };
+  let dec = 0, g = 0, dn = 0; const gs = [], ds = [];
+  for (const a of aces) {
+    if (a.io) continue;
+    if (!tok.has(a.sid)) continue;
+    const nb = (a.m & ~dec) >>> 0;
+    if (!nb) continue;
+    dec = (dec | nb) >>> 0;
+    if (a.allow) { g = (g | nb) >>> 0; gs.push(a); } else { dn = (dn | nb) >>> 0; ds.push(a); }
+  }
+  return { g, d: dn, lv: levelOf(g), gs, ds, key: [...new Set(gs.map(a => a.sid))].sort().join('|') };
+}
+function isEntry(c, i, thr = S.thr) {
+  const l = c.lv[i]; if (l < thr) return false;
+  const p = D.parent[i]; if (!p || c.lv[p] < thr) return true;
+  const a = D.acl[i], pa = D.acl[p];
+  return (a ? c.res[a].key : '') !== (pa ? c.res[pa].key : '');
+}
+function userStats(sid, base) {
+  const tok = D.tok.get(sid) || buildToken(sid); const cap = shareCap(tok, sid);
+  let max = 0, extra = 0; const via = new Set();
+  for (const id of D.aclIds) {
+    const r = evalAcl(id, tok); const l = Math.min(r.lv, cap); if (l > max) max = l;
+    if (l >= 2 && l > base.lvA[id]) { extra += D.aclFolders[id]; for (const a of r.gs) if (!base.tok.has(a.sid)) via.add(a.sid); }
+  }
+  return { max, extra, via: [...via].map(x => x === sid ? 'own SID' : pShort(x)) };
+}
+
+/* Full computation for one principal (all folders) */
+function compute(sid) {
+  if (D.cache.has(sid)) return D.cache.get(sid);
+  const tok = D.tok.get(sid) || buildToken(sid);
+  const cap = shareCap(tok, sid);
+  const maxAcl = D.aclFolders.length;
+  const res = new Array(maxAcl), lvA = new Int8Array(maxAcl).fill(-1);
+  for (const id of D.aclIds) { const r = evalAcl(id, tok); res[id] = r; lvA[id] = Math.min(r.lv, cap); }
+  const N = D.N, lv = new Int8Array(N + 1).fill(-1), sub = new Int8Array(N + 1).fill(-1);
+  for (let i = 1; i <= N; i++) { if (!D.exists[i]) continue; const a = D.acl[i]; lv[i] = a ? lvA[a] : -1; sub[i] = lv[i]; }
+  for (let k = D.order.length - 1; k >= 0; k--) { const i = D.order[k], p = D.parent[i]; if (p && sub[i] > sub[p]) sub[p] = sub[i]; }
+  const c = { sid, tok, cap, res, lvA, lv, sub };
+  if (D.cache.size > 40) D.cache.delete(D.cache.keys().next().value);
+  D.cache.set(sid, c);
+  return c;
+}
+
+/* ---- paths & names ---- */
+function pathOf(i) {
+  let p = D.pathCache.get(i); if (p) return p;
+  const parts = []; let j = i, g = 0;
+  while (j && g++ < 300) { parts.unshift(D.name[j]); j = D.parent[j]; }
+  p = parts.join('\\');
+  if (D.pathCache.size > 50000) D.pathCache.clear();
+  D.pathCache.set(i, p); return p;
+}
+function relPath(i) { const r = D.name[D.root]; const p = pathOf(i); return p === r ? r : p.slice(r.length + 1); }
+function pName(sid) { const p = D.P.get(sid); return p ? (p.type === 'user' ? p.name : p.full || p.name) : sid; }
+function pShort(sid) { const p = D.P.get(sid); if (!p) return sid; if (p.type === 'user') return p.sam; return (p.full || p.name).replace(/^[^\\]+\\/, ''); }
+function pIcon(p) { const t = { user: 'U', group: 'G', wk: '★', orphan: '?', computer: 'PC' }[p.type] || '·'; return el('span', { class: 'ico ' + p.type }, t); }
+function ancestors(i) { const out = []; let j = D.parent[i]; while (j) { out.unshift(j); j = D.parent[j]; } return out; }
+function viaText(c, r) {
+  if (!r || !r.gs.length) return '';
+  const sids = [...new Set(r.gs.map(a => a.sid))];
+  const nm = sids.map(s => s === c.sid ? 'direct' : pShort(s));
+  return nm.slice(0, 3).join(', ') + (nm.length > 3 ? ` +${nm.length - 3}` : '');
+}
+function chainText(tok, sid, self) {
+  if (sid === self) return 'direct';
+  const prev = tok.get(sid);
+  if (prev === '*') return pShort(sid) + ' (all users)';
+  const ch = chainOf(tok, sid).slice(1).map(pShort);
+  return ch.join(' → ');
+}
+
+/* ====================================================================
+   App shell
+   ==================================================================== */
+const S = { tab: 'tree', sel: null, thr: 2, ptype: 'user', pq: '', showDisabled: true, mxMode: 'user', mxDisabled: false };
+
+function startApp() {
+  $('#load').hidden = true;
+  $('#tabs').hidden = false; $('#reloadBtn').hidden = false;
+  const m = D.meta; const c = m.Counts || {};
+  $('#meta').textContent = `${D.name[D.root]} · ${fmtN(D.N)} folders · ${fmtN(c.AdUsers || D.users.length)} users · snapshot ${fmtDate(m.EndUtc)}${m.Computer ? ' · ' + m.Computer : ''}`;
+  // default principal: first enabled user
+  S.sel = null;
+  D.ui = {};
+  setTab('tree');
+}
+function setTab(t) {
+  S.tab = t;
+  for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('on', b.dataset.tab === t);
+  for (const v of document.querySelectorAll('.view')) v.classList.toggle('on', v.id === 'v-' + t);
+  if (t === 'tree') renderTreeView();
+  if (t === 'graph') renderGraphView();
+  if (t === 'folders') renderFoldersView();
+  if (t === 'matrix') renderMatrixView();
+  if (t === 'issues') renderIssuesView();
+  if (t === 'compare') renderCompareView();
+}
+$('#tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); });
+
+/* ---- sidebar (principal picker) ---- */
+function renderSidebar(host, onPick) {
+  host.innerHTML = '';
+  const q = el('input', { class: 'inp', placeholder: 'Search user or group…', value: S.pq });
+  const seg = el('div', { class: 'seg' });
+  const types = [['user', 'Users'], ['group', 'Groups'], ['other', 'Other']];
+  for (const [k, n] of types) seg.append(el('button', { class: S.ptype === k ? 'on' : '', onclick: () => { S.ptype = k; draw(); for (const b of seg.children) b.classList.toggle('on', b.textContent === n); } }, n));
+  const dis = el('label', { class: 'hint', style: 'display:flex;gap:6px;align-items:center' }, el('input', { type: 'checkbox', checked: S.showDisabled, onchange: e => { S.showDisabled = e.target.checked; draw(); } }), 'show disabled');
+  const list = el('div', { class: 'plist' });
+  host.append(el('div', { class: 'side-head' }, q, seg, dis), el('div', { class: 'scroll' }, list));
+  q.addEventListener('input', () => { S.pq = q.value; draw(); });
+  function draw() {
+    const qq = S.pq.trim().toLowerCase();
+    const arr = [...D.P.values()].filter(p => {
+      if (S.ptype === 'user' && p.type !== 'user') return false;
+      if (S.ptype === 'group' && p.type !== 'group') return false;
+      if (S.ptype === 'other' && !((p.type === 'wk' || p.type === 'orphan') && (p.sid === '__ANY__' || D.aclSids.has(p.sid) || D.membersOf.has(p.sid)))) return false;
+      if (!S.showDisabled && p.type === 'user' && !p.enabled) return false;
+      if (qq && !((p.name || '') + ' ' + (p.full || '') + ' ' + (p.sam || '') + ' ' + (p.dept || '')).toLowerCase().includes(qq)) return false;
+      return true;
+    }).sort((a, b) => (b.sid === '__ANY__') - (a.sid === '__ANY__') || a.name.localeCompare(b.name, undefined));
+    list.innerHTML = '';
+    for (const p of arr.slice(0, 600)) {
+      const sub = p.type === 'user' ? [p.sam, p.dept].filter(Boolean).join(' · ') : p.type === 'group' ? [p.scope, p.desc].filter(Boolean).join(' · ') : p.sid;
+      const it = el('div', { class: 'pi' + (p.sid === S.sel ? ' on' : ''), onclick: () => { S.sel = p.sid; for (const x of list.children) x.classList.remove('on'); it.classList.add('on'); onPick(p.sid); } },
+        pIcon(p), el('div', { class: 'nm' }, el('b', null, p.name), el('small', null, sub)),
+        p.type === 'user' && !p.enabled ? el('span', { class: 'tag off' }, 'disabled') : null);
+      list.append(it);
+    }
+    if (!arr.length) list.append(el('div', { class: 'empty' }, 'Nothing found'));
+  }
+  draw();
+  const on = list.querySelector('.pi.on'); if (on) on.scrollIntoView({ block: 'nearest' });
+}
+
+function deselect() {
+  S.sel = null;
+  if (S.tab === 'tree') renderTreeView(); else if (S.tab === 'graph') renderGraphView();
+}
+function emptyMain(view) {
+  const ph = $(view === 'tree' ? '#pheadTree' : '#pheadGraph'), tb = $(view === 'tree' ? '#tbTree' : '#tbGraph'), body = $(view === 'tree' ? '#treeP' : '#graph');
+  ph.innerHTML = ''; tb.innerHTML = '';
+  body.innerHTML = '';
+  body.append(el('div', { class: 'placeholder', style: 'min-height:60vh' }, el('div', { class: 'big' }, '☰'),
+    el('b', null, 'Select a user or group on the left'),
+    el('div', null, view === 'tree' ? 'You will see the folders this principal can access.' : 'You will see how this principal gets access: via which groups to which folders.'),
+    el('div', { class: 'hint' }, 'Tip: "Other → Any domain user" shows what everyone gets.')));
+}
+
+/* ---- principal header ---- */
+function renderPHead(host, c) {
+  host.innerHTML = '';
+  const p = D.P.get(c.sid);
+  const box = el('div', { class: 'phead' });
+  const back = el('button', { class: 'backbtn', title: 'Close (Esc)', onclick: deselect }, '←');
+  const title = el('h2', null, back, pIcon(p), p.name, p.type === 'user' ? el('span', { class: 'muted small' }, p.full) : el('span', { class: 'muted small' }, p.type === 'group' ? (p.scope || 'group') : p.sid === '__ANY__' ? 'Everyone + Authenticated Users + Domain Users + nested' : p.sid));
+  if (p.type === 'user' && !p.enabled) title.append(el('span', { class: 'tag off' }, 'disabled'));
+  if (p.type === 'orphan') title.append(el('span', { class: 'tag off' }, 'account deleted'));
+  title.append(el('button', { class: 'btn small', style: 'margin-left:auto', title: 'Compare this principal with another one', onclick: () => { if (CMP.a !== c.sid) { CMP.b = CMP.a && CMP.a !== c.sid ? CMP.a : CMP.b === c.sid ? null : CMP.b; CMP.a = c.sid; } setTab('compare'); } }, '⇄ Compare…'));
+  box.append(title);
+  const info = [];
+  if (p.type === 'user') { if (p.title || p.dept) info.push([p.title, p.dept].filter(Boolean).join(', ')); info.push('last logon: ' + (fmtDate(p.lastLogon) || 'never')); }
+  if (p.desc) info.push(p.desc);
+  if (info.length) box.append(el('div', { class: 'sub' }, info.join(' · ')));
+  // stats
+  let nAcc = 0, n5 = 0, n4 = 0, nEntry = 0;
+  for (let i = 1; i <= D.N; i++) { const l = c.lv[i]; if (l >= S.thr) { nAcc++; if (l === 5) n5++; else if (l === 4) n4++; if (isEntry(c, i)) nEntry++; } }
+  box.append(el('div', { class: 'row2' },
+    el('div', { class: 'stat' }, el('b', null, fmtN(nAcc)), el('span', null, 'folders with access')),
+    el('div', { class: 'stat' }, el('b', { style: 'color:var(--l5)' }, fmtN(n5)), el('span', null, 'full')),
+    el('div', { class: 'stat' }, el('b', { style: 'color:var(--l4)' }, fmtN(n4)), el('span', null, 'modify')),
+    el('div', { class: 'stat' }, el('b', null, fmtN(nEntry)), el('span', { title: 'Folders where access appears or is granted via different groups than on the parent' }, 'entry points')),
+    c.cap < 5 ? el('span', { class: 'tag inh' }, 'limited by share permissions: ' + LV[c.cap].n) : null));
+  // groups
+  const groups = [...c.tok.keys()].filter(s => s !== c.sid);
+  if (groups.length) {
+    const chips = el('div', { class: 'chips' }, el('span', { class: 'hint', style: 'margin-right:4px' }, p.type === 'group' ? 'Member of:' : 'Groups:'));
+    for (const g of groups) {
+      const prev = c.tok.get(g); const nested = prev !== c.sid && prev !== '*';
+      chips.append(el('span', { class: 'chip', title: chainText(c.tok, g, c.sid) + '\nClick to open', onclick: () => pick(g), style: nested ? 'border-style:dashed' : '' }, pShort(g)));
+    }
+    box.append(chips);
+  }
+  if (p.type === 'group' || D.membersOf.has(c.sid)) {
+    const direct = D.membersOf.get(c.sid) || [];
+    const all = recursiveUsers(c.sid);
+    const chips = el('div', { class: 'chips' }, el('span', { class: 'hint', style: 'margin-right:4px' }, `Members (${direct.length} direct, ${all.size} users total):`));
+    for (const m of direct.slice(0, 60)) { const mp = D.P.get(m); chips.append(el('span', { class: 'chip', onclick: () => pick(m), style: mp && mp.type === 'user' && !mp.enabled ? 'text-decoration:line-through' : '' }, pShort(m))); }
+    if (direct.length > 60) chips.append(el('span', { class: 'hint' }, `+${direct.length - 60}`));
+    box.append(chips);
+  }
+  host.append(box);
+}
+function recursiveUsers(gsid) {
+  const out = new Set(), seen = new Set([gsid]), q = [gsid];
+  for (let k = 0; k < q.length; k++) for (const m of D.membersOf.get(q[k]) || []) {
+    const mp = D.P.get(m);
+    if (mp && mp.type === 'user') out.add(m);
+    if (!seen.has(m)) { seen.add(m); q.push(m); }
+  }
+  return out;
+}
+function pick(sid) {
+  S.sel = sid;
+  const pp = D.P.get(sid);
+  if (pp) { S.ptype = pp.type === 'user' ? 'user' : pp.type === 'group' ? 'group' : 'other'; S.pq = ''; if (pp.type === 'user' && !pp.enabled) S.showDisabled = true; }
+  if (S.tab !== 'tree' && S.tab !== 'graph') setTab('tree'); else setTab(S.tab);
+}
+
+/* ====================================================================
+   Tree component
+   ==================================================================== */
+const BATCH = 300;
+class Tree {
+  constructor(host, o) {
+    this.host = host; this.o = o; this.st = new Map(); this.selRow = null;
+    host.innerHTML = '';
+    this.baseDepth = D.depth[D.root];
+    if (this.o.visible(D.root)) { this.mount(D.root, host); this.open(D.root); }
+    else host.append(el('div', { class: 'empty' }, o.emptyText || 'No access'));
+  }
+  kidsOf(i) { const out = []; for (let k = D.kStart[i]; k < D.kStart[i + 1]; k++) { const c = D.kids[k]; if (this.o.visible(c)) out.push(c); } return out; }
+  hasKids(i) { if (D.files[i] > 0) return true; for (let k = D.kStart[i]; k < D.kStart[i + 1]; k++) if (this.o.visible(D.kids[k])) return true; return false; }
+  mount(i, parentEl) {
+    const node = el('div', { class: 'node' });
+    const row = el('div', { class: 'row', style: `padding-left:${(D.depth[i] - this.baseDepth) * 18 + 6}px` });
+    const tg = el('button', { class: 'tg' + (this.hasKids(i) ? '' : ' none'), onclick: () => this.toggle(i) }, '▶');
+    const fn = el('span', { class: 'fn', onclick: () => this.select(i) }, D.name[i]);
+    row.append(tg, el('span', { class: 'fi ' + (this.o.iconClass ? this.o.iconClass(i) : 'lv0') }), fn);
+    this.o.decorate(row, i);
+    row.addEventListener('dblclick', () => this.toggle(i));
+    const kids = el('div', { class: 'kids', hidden: true });
+    node.append(row, kids); parentEl.append(node);
+    this.st.set(i, { node, row, tg, kids, open: false, list: null, rendered: 0 });
+  }
+  toggle(i, force) { const s = this.st.get(i); if (!s) return; const op = force ?? !s.open; if (op) this.open(i); else { s.open = false; s.kids.hidden = true; s.tg.textContent = '▶'; } }
+  open(i) {
+    const s = this.st.get(i); if (!s) return;
+    if (!s.list) { s.list = this.kidsOf(i); this.renderMore(i, BATCH); }
+    s.open = true; s.kids.hidden = false; s.tg.textContent = '▼';
+  }
+  renderMore(i, upto) {
+    const s = this.st.get(i);
+    s.kids.querySelectorAll(':scope > .more, :scope > .files').forEach(x => x.remove());
+    const end = Math.min(s.list.length, Math.max(upto, s.rendered));
+    for (let k = s.rendered; k < end; k++) this.mount(s.list[k], s.kids);
+    s.rendered = end;
+    const pad = `padding-left:${(D.depth[i] + 1 - this.baseDepth) * 18 + 30}px`;
+    if (s.rendered < s.list.length) {
+      const left = s.list.length - s.rendered;
+      s.kids.append(el('div', { class: 'row more', style: pad }, el('button', { onclick: () => this.renderMore(i, s.rendered + BATCH) }, `Show ${Math.min(BATCH, left)} more of ${fmtN(left)}…`)));
+    }
+    if (D.files[i] > 0) s.kids.append(el('div', { class: 'row files', style: pad }, filesTxt(D.files[i])));
+  }
+  select(i) {
+    const s = this.st.get(i); if (!s) return;
+    if (this.selRow) this.selRow.classList.remove('sel');
+    s.row.classList.add('sel'); this.selRow = s.row;
+    this.o.onSelect && this.o.onSelect(i);
+  }
+  reveal(i, quiet) {
+    if (!this.o.visible(i)) { if (!quiet) toast('This folder is not visible in this tree'); return false; }
+    const chain = [...ancestors(i), i];
+    for (let k = 0; k < chain.length - 1; k++) {
+      const a = chain[k], b = chain[k + 1];
+      if (!this.st.has(a)) return false;
+      this.open(a);
+      const s = this.st.get(a);
+      if (!this.st.has(b)) { const idx = s.list.indexOf(b); if (idx < 0) return false; this.renderMore(a, idx + 1); }
+    }
+    const s = this.st.get(i); if (!s) return false;
+    this.select(i);
+    s.row.scrollIntoView({ block: 'center' });
+    return true;
+  }
+}
+
+/* folder search box */
+function folderSearch(visible, onPick) {
+  const wrap = el('div', { class: 'searchwrap' });
+  const inp = el('input', { class: 'inp', style: 'width:300px', placeholder: 'Find folder by name…' });
+  const res = el('div', { class: 'searchres' });
+  wrap.append(inp, res);
+  let t;
+  inp.addEventListener('input', () => { clearTimeout(t); t = setTimeout(run, 200); });
+  inp.addEventListener('focus', () => { if (res.childElementCount) res.classList.add('on'); });
+  document.addEventListener('click', e => { if (!wrap.contains(e.target)) res.classList.remove('on'); });
+  function run() {
+    const q = inp.value.trim().toLowerCase(); res.innerHTML = '';
+    if (q.length < 2) { res.classList.remove('on'); return; }
+    let n = 0;
+    for (let i = 1; i <= D.N && n < 200; i++) {
+      if (!D.exists[i] || !D.name[i] || !D.name[i].toLowerCase().includes(q) || !visible(i)) continue;
+      n++;
+      res.append(el('div', { onclick: () => { res.classList.remove('on'); onPick(i); } }, el('div', null, D.name[i]), el('div', { class: 'p' }, relPath(i))));
+    }
+    if (!n) res.append(el('div', { class: 'muted' }, 'Not found'));
+    res.classList.add('on');
+  }
+  return wrap;
+}
+
+/* ====================================================================
+   View: principal tree
+   ==================================================================== */
+function legend() {
+  return el('div', { class: 'legend' }, [5, 4, 3, 2, 1].map(l => lvBadge(l)), el('span', null, '· grey: traverse only, leads to accessible folders'));
+}
+function renderTreeView() {
+  renderSidebar($('#sideTree'), () => renderTreeView());
+  closeDetails('tree');
+  if (!S.sel) { emptyMain('tree'); return; }
+  const c = compute(S.sel);
+  renderPHead($('#pheadTree'), c);
+  const tb = $('#tbTree'); tb.innerHTML = '';
+  const thrSel = el('select', { onchange: e => { S.thr = +e.target.value; renderTreeView(); } }, THR_OPTS.map(([v, n]) => el('option', { value: v, selected: S.thr === v }, n)));
+  const visible = i => c.sub[i] >= S.thr || (c.lv[i] === -1 && D.parent[i] && c.lv[D.parent[i]] >= S.thr);
+  const tree = { t: null };
+  tb.append(el('label', null, 'Show:', thrSel),
+    folderSearch(visible, i => tree.t.reveal(i)),
+    el('button', { class: 'btn small primary', title: 'Formatted Excel report: summary, entry points, all folders, groups', onclick: () => exportPrincipalXlsx(c.sid) }, '⤓ Excel report'),
+    el('button', { class: 'btn small', onclick: () => exportPrincipal(c, false) }, 'CSV: all folders'),
+    el('button', { class: 'btn small', onclick: () => exportPrincipal(c, true) }, 'CSV: entry points'),
+    el('div', { class: 'spacer' }), legend());
+  tree.t = new Tree($('#treeP'), {
+    visible,
+    emptyText: 'This principal has no access to any folder at the selected level.',
+    iconClass: i => LV[c.lv[i] >= S.thr || c.lv[i] === -1 ? c.lv[i] : 0].c,
+    decorate(row, i) {
+      const l = c.lv[i];
+      if (l < S.thr && l !== -1) { row.classList.add('pass'); row.append(el('span', { class: 'cnt' }, 'traverse')); return; }
+      row.append(lvBadge(l));
+      const a = D.acl[i], r = a ? c.res[a] : null;
+      const p = D.parent[i]; const pa = p ? D.acl[p] : 0;
+      const vt = viaText(c, r), pvt = p && pa ? viaText(c, c.res[pa]) : null;
+      if (r && r.ds.length) row.append(el('span', { class: 'tag deny', title: 'Deny applied: ' + r.ds.map(x => pShort(x.sid) + ' (' + rightsName(x.m, x.rights) + ')').join(', ') }, 'deny'));
+      if (vt && (vt !== pvt || l !== c.lv[p])) row.append(el('span', { class: 'via' }, 'via ' + vt));
+      if (D.inhOff[i]) row.append(el('span', { class: 'tag inh', title: 'Inheritance disabled' }, 'inherit. off'));
+      if (D.err.has(i)) row.append(el('span', { class: 'tag err', title: D.err.get(i) }, 'read error'));
+    },
+    onSelect: i => showDetails('tree', i, c),
+  });
+  D.ui.treeP = tree.t;
+  if (D.ui.pendingReveal) { const i = D.ui.pendingReveal; D.ui.pendingReveal = null; setTimeout(() => tree.t.reveal(i), 0); }
+}
+function exportPrincipal(c, entriesOnly) {
+  const rows = [];
+  for (let i = 1; i <= D.N; i++) {
+    const l = c.lv[i]; if (l < S.thr) continue;
+    if (entriesOnly && !isEntry(c, i)) continue;
+    const a = D.acl[i]; const r = a ? c.res[a] : null;
+    const via = r ? [...new Set(r.gs.map(x => x.sid))].map(s => chainText(c.tok, s, c.sid)).join('; ') : '';
+    rows.push([pathOf(i), LV[l].n, via, r && r.ds.length ? 'yes' : '', D.inhOff[i] ? 'yes' : '', D.files[i] < 0 ? '' : D.files[i]]);
+  }
+  rows.sort((a, b) => a[0].localeCompare(b[0]));
+  downloadCSV(`access_${safeName(pShort(c.sid))}${entriesOnly ? '_entries' : ''}.csv`, ['Path', 'Level', 'Via', 'Deny', 'Inheritance off', 'Files'], rows);
+}
+
+/* ====================================================================
+   Details panel
+   ==================================================================== */
+const DV = { tree: ['#detTree', '#v-tree'], folders: ['#detFolders', '#v-folders'], compare: ['#detCompare', '#v-compare'] };
+function closeDetails(view) {
+  $(DV[view][0]).innerHTML = '';
+  $(DV[view][1]).classList.remove('det');
+}
+function makeResizer() {
+  const r = el('div', { class: 'resizer', title: 'Drag to resize · double-click to reset' });
+  r.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const startX = e.clientX, startW = r.parentElement.getBoundingClientRect().width;
+    r.classList.add('drag'); document.body.classList.add('resizing');
+    const move = ev => setDetW(startW + (startX - ev.clientX));
+    const up = () => { r.classList.remove('drag'); document.body.classList.remove('resizing'); document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); try { localStorage.setItem('fsa-detw', getComputedStyle(document.documentElement).getPropertyValue('--detw')); } catch (err) {} };
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+  });
+  r.addEventListener('dblclick', () => { setDetW(460); try { localStorage.removeItem('fsa-detw'); } catch (err) {} });
+  return r;
+}
+function setDetW(w) {
+  const max = Math.max(360, window.innerWidth - (S.tab === 'tree' ? 300 : 0) - 320);
+  w = Math.round(Math.min(max, Math.max(320, w)));
+  document.documentElement.style.setProperty('--detw', w + 'px');
+}
+function sourceOfInherited(i, ace) {
+  let j = D.parent[i], g = 0;
+  while (j && g++ < 300) {
+    const a = D.acl[j];
+    if (a) for (const x of D.ACL[a]) if (!x.inh && x.sid === ace.sid && x.allow === ace.allow && (x.ci || x.oi)) return j;
+    j = D.parent[j];
+  }
+  return 0;
+}
+function usersWithAccess(i) {
+  const a = D.acl[i]; if (!a) return null;
+  let r = D.cache.get('acl:' + a);
+  if (r) return r;
+  r = [];
+  for (const s of D.users) {
+    const tok = D.tok.get(s); const e = evalAcl(a, tok); const l = Math.min(e.lv, shareCap(tok, s));
+    if (l >= 1) r.push({ sid: s, lv: l, e, tok });
+  }
+  D.cache.set('acl:' + a, r);
+  return r;
+}
+function showDetails(view, i, c, c2) {
+  const host = $(DV[view][0]);
+  $(DV[view][1]).classList.add('det');
+  host.innerHTML = '';
+  host.append(makeResizer());
+  const path = pathOf(i);
+  host.append(el('div', { class: 'det-head' },
+    el('div', { class: 't' }, el('b', null, D.name[i]), el('div', { class: 'p' }, path)),
+    el('button', { class: 'btn small', title: 'Copy path', onclick: () => { navigator.clipboard?.writeText(path).then(() => toast('Path copied'), () => toast(path)); } }, 'copy'),
+    el('button', { class: 'x', onclick: () => closeDetails(view) }, '×')));
+  const sc = el('div', { class: 'scroll' }); host.append(sc);
+  const a = D.acl[i];
+
+  for (const [cc, tagName] of [[c, c2 ? 'A' : ''], [c2, 'B']]) {
+    if (!cc) continue;
+    const c = cc;
+    const r = a ? c.res[a] : null; const l = c.lv[i];
+    const sec = el('div', { class: 'sec' }, el('h4', null, tagName ? el('span', { class: 'abtag ' + tagName.toLowerCase(), style: 'margin-right:6px' }, tagName) : null, 'Access: ' + pShort(c.sid)));
+    sec.append(el('div', { style: 'display:flex;gap:8px;align-items:center;margin-bottom:6px' }, lvBadge(l), el('span', { class: 'muted small' }, LV[l].d)));
+    if (r) {
+      for (const s of [...new Set(r.gs.map(x => x.sid))]) sec.append(el('div', { class: 'small' }, '✓ via ', el('b', null, chainText(c.tok, s, c.sid))));
+      for (const x of r.ds) sec.append(el('div', { class: 'small', style: 'color:var(--deny)' }, '⛔ deny ', el('b', null, rightsName(x.m, x.rights)), ' for ', chainText(c.tok, x.sid, c.sid), x.inh ? ' (inherited)' : ' (explicit)'));
+      if (c.cap < r.lv) sec.append(el('div', { class: 'small', style: 'color:var(--warn)' }, 'Share permissions limit this to: ' + LV[c.cap].n));
+    }
+    sc.append(sec);
+  }
+
+  const owner = D.owner[i] >= 0 ? D.ownerSids[D.owner[i]] : '';
+  const kv = el('div', { class: 'kv' },
+    el('div', null, 'Owner'), el('div', null, owner ? el('a', { onclick: () => pick(owner) }, pName(owner)) : '—'),
+    el('div', null, 'Inheritance'), el('div', null, D.inhOff[i] ? el('span', { style: 'color:var(--warn)' }, 'disabled') : 'enabled'),
+    el('div', null, 'Files'), el('div', null, D.files[i] < 0 ? '—' : `${fmtN(D.files[i])} (${fmtBytes(D.bytes[i])})`),
+    el('div', null, 'Subfolders'), el('div', null, `${fmtN(D.kStart[i + 1] - D.kStart[i])} (${fmtN(D.subSize[i] - 1)} in whole subtree)`),
+    el('div', null, 'Modified'), el('div', null, fmtDate(D.lw[i]) || '—'));
+  const info = el('div', { class: 'sec' }, el('h4', null, 'Folder'), kv);
+  if (D.err.has(i)) info.append(el('div', { class: 'small', style: 'color:var(--crit);margin-top:6px' }, D.err.get(i)));
+  sc.append(info);
+
+  // ACL table
+  const aclSec = el('div', { class: 'sec' }, el('h4', null, 'ACL (' + (a ? D.ACL[a].length : 0) + ' entries)'));
+  if (!a) aclSec.append(el('div', { class: 'muted' }, 'ACL not read (the collecting account had no access).'));
+  else if (D.ACL[a].special) aclSec.append(el('div', { style: 'color:var(--crit)' }, D.ACL[a].special === 'NULL_DACL' ? 'NULL DACL - everyone has full access!' : 'Empty DACL - access denied to everyone.'));
+  else {
+    const tb = el('tbody');
+    for (const x of D.ACL[a]) {
+      const hit = !x.io && ((c && c.tok.has(x.sid)) || (c2 && c2.tok.has(x.sid)));
+      let src = 'explicit';
+      if (x.inh) { const s = sourceOfInherited(i, x); src = s ? el('a', { title: pathOf(s), onclick: () => goFolder(s) }, 'from ' + D.name[s]) : 'from parent above root'; }
+      tb.append(el('tr', { class: (hit ? 'hit ' : '') + (x.allow ? '' : 'denyrow') },
+        el('td', null, x.allow ? 'Allow' : 'Deny'),
+        el('td', null, el('a', { onclick: () => pick(x.sid) }, pShort(x.sid)), D.P.get(x.sid)?.type === 'orphan' ? el('span', { class: 'tag off', style: 'margin-left:4px' }, 'deleted') : null),
+        el('td', null, rightsName(x.m, x.rights), el('div', { class: 'muted small' }, applyTo(x))),
+        el('td', { class: 'small' }, src)));
+    }
+    aclSec.append(el('table', { class: 't' }, el('thead', null, el('tr', null, el('th', null, 'Type'), el('th', null, 'Who'), el('th', null, 'Rights'), el('th', null, 'Source'))), tb));
+    if (c) aclSec.append(el('div', { class: 'hint', style: 'margin-top:4px' }, c2 ? 'Highlighted entries apply to A or B.' : 'Highlighted entries apply to the selected principal.'));
+  }
+  sc.append(aclSec);
+
+  // users with access
+  const ua = usersWithAccess(i);
+  if (ua) {
+    const us = el('div', { class: 'sec ulist' });
+    const onlyEnabled = ua.filter(u => D.P.get(u.sid).enabled);
+    us.append(el('h4', null, `Users with access (${onlyEnabled.length} active${ua.length > onlyEnabled.length ? ', ' + (ua.length - onlyEnabled.length) + ' disabled' : ''})`));
+    for (const l of [5, 4, 3, 2, 1]) {
+      const grp = ua.filter(u => u.lv === l).sort((x, y) => pName(x.sid).localeCompare(pName(y.sid), undefined));
+      if (!grp.length) continue;
+      us.append(el('div', { class: 'lvgrp' }, lvBadge(l), el('span', { class: 'muted small' }, grp.length)));
+      for (const u of grp) {
+        const p = D.P.get(u.sid);
+        const via = [...new Set(u.e.gs.map(x => x.sid))].map(s => chainText(u.tok, s, u.sid)).join('; ');
+        us.append(el('div', { class: 'u' }, el('a', { class: 'n', onclick: () => pick(u.sid), style: p.enabled ? '' : 'text-decoration:line-through;color:var(--muted)' }, p.name), el('span', { class: 'w', title: via }, via)));
+      }
+    }
+    sc.append(us);
+  }
+}
+function goFolder(i) {
+  if (S.tab === 'tree' && D.ui.treeP && D.ui.treeP.reveal(i, true)) return;
+  D.ui.pendingFolder = i; setTab('folders');
+}
+
+/* ====================================================================
+   View: graph (lines)
+   ==================================================================== */
+function renderGraphView() {
+  renderSidebar($('#sideGraph'), () => renderGraphView());
+  if (!S.sel) { emptyMain('graph'); return; }
+  const c = compute(S.sel);
+  renderPHead($('#pheadGraph'), c);
+  if (!S.pin || S.pin.owner !== c.sid) S.pin = { owner: c.sid, mids: new Set(), fs: new Set() };
+  const pin = S.pin;
+  const tb = $('#tbGraph'); tb.innerHTML = '';
+  const MAXF = 80;
+  const clearBtn = el('button', { class: 'btn small', onclick: () => { pin.mids.clear(); pin.fs.clear(); applyPins(); } }, 'Clear selection');
+  tb.append(el('label', null, 'Show:', el('select', { onchange: e => { S.thr = +e.target.value; renderGraphView(); } }, THR_OPTS.map(([v, n]) => el('option', { value: v, selected: S.thr === v }, n)))),
+    clearBtn,
+    el('button', { class: 'btn small primary', title: 'Formatted Excel report', onclick: () => exportPrincipalXlsx(c.sid) }, '⤓ Excel report'),
+    el('span', { class: 'hint' }, 'Click a node to pin its highlight (click several to combine, click again to unpin). ↗ opens the group / folder.'),
+    el('div', { class: 'spacer' }), legend());
+  // entries
+  const entries = [];
+  for (let i = 1; i <= D.N; i++) {
+    if (!isEntry(c, i)) continue;
+    const l = c.lv[i]; const r = c.res[D.acl[i]]; const sids = r ? [...new Set(r.gs.map(x => x.sid))] : [];
+    entries.push({ i, l, sids, path: relPath(i) });
+  }
+  entries.sort((a, b) => b.l - a.l || a.path.localeCompare(b.path, undefined));
+  const shown = entries.slice(0, MAXF);
+  const midSet = new Map();
+  for (const e of shown) for (const s of e.sids) midSet.set(s, (midSet.get(s) || 0) + 1);
+  const mids = [...midSet.keys()].sort((a, b) => midSet.get(b) - midSet.get(a));
+  for (const s of [...pin.mids]) if (!midSet.has(s)) pin.mids.delete(s);
+  for (const f of [...pin.fs]) if (!shown.some(e => e.i === f)) pin.fs.delete(f);
+  const host = $('#graph'); host.innerHTML = '';
+  if (!entries.length) { host.append(el('div', { class: 'empty' }, 'No access at the selected level.')); clearBtn.hidden = true; return; }
+  const W = Math.max(900, host.clientWidth - 32), RH = 26, top = 30;
+  const colX = [10, Math.round(W * 0.27), Math.round(W * 0.55)];
+  const colW = [Math.round(W * 0.2), Math.round(W * 0.22), W - Math.round(W * 0.55) - 10];
+  const H = top + Math.max(mids.length, shown.length, 1) * RH + 40;
+  const svg = sv('svg', { class: 'g', width: W, height: H, viewBox: `0 0 ${W} ${H}` });
+  svg.append(sv('rect', { x: 0, y: 0, width: W, height: H, fill: 'transparent', onclick: () => { pin.mids.clear(); pin.fs.clear(); applyPins(); } }));
+  svg.append(sv('text', { x: colX[0], y: 14, class: 'colh' }, 'Principal'), sv('text', { x: colX[1], y: 14, class: 'colh' }, 'Via'), sv('text', { x: colX[2], y: 14, class: 'colh' }, `Entry points (${shown.length}${entries.length > MAXF ? ' of ' + entries.length : ''})`));
+  const midY = new Map(); mids.forEach((s, k) => midY.set(s, top + k * RH + RH / 2));
+  const fY = shown.map((e, k) => top + k * RH + RH / 2);
+  const pY = top + (Math.max(mids.length, 1) * RH) / 2;
+  const cs = getComputedStyle(document.documentElement);
+  const lvColor = l => cs.getPropertyValue('--l' + (l < 0 ? 'u' : l)).trim() || '#888';
+  const links = sv('g'); svg.append(links);
+  const linkEls = [];
+  const curve = (x1, y1, x2, y2) => { const mx = (x1 + x2) / 2; return `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`; };
+  for (const s of mids) {
+    const best = Math.max(...shown.filter(e => e.sids.includes(s)).map(e => e.l));
+    const p = sv('path', { class: 'lnk', d: curve(colX[0] + colW[0], pY, colX[1], midY.get(s)), stroke: lvColor(best) });
+    p._mid = s; p._f = null; links.append(p); linkEls.push(p);
+  }
+  shown.forEach((e, k) => {
+    for (const s of e.sids) {
+      const p = sv('path', { class: 'lnk', d: curve(colX[1] + colW[1], midY.get(s), colX[2], fY[k]), stroke: lvColor(e.l) });
+      p._mid = s; p._f = e.i; links.append(p); linkEls.push(p);
+    }
+  });
+  const trunc = (s, w) => { const n = Math.max(6, Math.floor(w / 6.6)); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+  const p0 = D.P.get(c.sid);
+  svg.append(sv('g', { class: 'node' }, sv('rect', { class: 'nb', x: colX[0], y: pY - 13, width: colW[0], height: 26, rx: 6 }), sv('text', { x: colX[0] + 8, y: pY + 4 }, trunc(p0.name, colW[0] - 16))));
+
+  const midNodes = new Map(), fNodes = new Map();
+  const sidsOfF = new Map(shown.map(e => [e.i, e.sids]));
+  // highlight state: sel = {mids:Set, fs:Set}; empty -> everything normal
+  function paint(sel) {
+    const any = sel.mids.size || sel.fs.size;
+    const midOn = s => sel.mids.has(s) || [...sel.fs].some(f => sidsOfF.get(f).includes(s));
+    const fOn = f => sel.fs.has(f) || sidsOfF.get(f).some(s => sel.mids.has(s));
+    for (const p of linkEls) {
+      const on = p._f == null ? midOn(p._mid) : (sel.mids.has(p._mid) || sel.fs.has(p._f));
+      p.classList.toggle('hi', !!any && on); p.classList.toggle('dim', !!any && !on);
+    }
+    for (const [s, g] of midNodes) { g.classList.toggle('dimn', !!any && !midOn(s)); g.classList.toggle('pinned', pin.mids.has(s)); }
+    for (const [f, g] of fNodes) { g.classList.toggle('dimn', !!any && !fOn(f)); g.classList.toggle('pinned', pin.fs.has(f)); }
+  }
+  function applyPins() {
+    paint(pin);
+    const n = pin.mids.size + pin.fs.size;
+    clearBtn.textContent = n ? `Clear selection (${n})` : 'Clear selection';
+    clearBtn.disabled = !n;
+    if (D.ui.graphInfo) D.ui.graphInfo.textContent = pinInfo();
+  }
+  function pinInfo() {
+    if (!pin.mids.size && !pin.fs.size) return '';
+    const fs = shown.filter(e => pin.fs.has(e.i) || e.sids.some(s => pin.mids.has(s)));
+    const ids = new Set(fs.map(e => e.i));
+    const sub = fs.filter(e => !ancestors(e.i).some(a => ids.has(a))).reduce((a, e) => a + D.subSize[e.i], 0);
+    return `Selected: ${fs.length} entry ${fs.length === 1 ? 'point' : 'points'}, ~${fmtN(sub)} folders in their subtrees` + (pin.mids.size ? ' · via ' + [...pin.mids].map(s => s === c.sid ? 'direct' : pShort(s)).join(', ') : '');
+  }
+  const preview = sel => paint(sel);
+  const restore = () => paint(pin);
+  const toggle = (set, v) => { if (set.has(v)) set.delete(v); else set.add(v); applyPins(); };
+
+  for (const s of mids) {
+    const y = midY.get(s);
+    const label = s === c.sid ? 'direct' : pShort(s);
+    const ch = chainText(c.tok, s, c.sid);
+    const nested = s !== c.sid && c.tok.get(s) !== c.sid && c.tok.get(s) !== '*';
+    const canOpen = s !== c.sid;
+    const g = sv('g', { class: 'node', onmouseenter: () => preview({ mids: new Set([s, ...pin.mids]), fs: pin.fs }), onmouseleave: restore, onclick: e => { e.stopPropagation(); toggle(pin.mids, s); } },
+      sv('rect', { class: 'nb', x: colX[1], y: y - 11, width: colW[1], height: 22, rx: 11, 'stroke-dasharray': nested ? '4 3' : null }),
+      sv('text', { x: colX[1] + 10, y: y + 4 }, trunc(label + ' (' + midSet.get(s) + ')', colW[1] - (canOpen ? 40 : 20))),
+      sv('title', null, ch + '\nClick: pin highlight' + (canOpen ? ' · ↗: open this principal' : '')));
+    if (canOpen) g.append(sv('text', { class: 'open', x: colX[1] + colW[1] - 12, y: y + 4, 'text-anchor': 'middle', onclick: e => { e.stopPropagation(); pick(s); } }, '↗', sv('title', null, 'Open ' + pShort(s))));
+    midNodes.set(s, g); svg.append(g);
+  }
+  shown.forEach((e, k) => {
+    const y = fY[k];
+    const g = sv('g', { class: 'node fnode', onmouseenter: () => preview({ mids: pin.mids, fs: new Set([e.i, ...pin.fs]) }), onmouseleave: restore, onclick: ev => { ev.stopPropagation(); toggle(pin.fs, e.i); } },
+      sv('rect', { class: 'fb', x: colX[2] - 4, y: y - 12, width: colW[2] + 4, height: 24, rx: 4 }),
+      sv('rect', { x: colX[2], y: y - 9, width: 8, height: 18, rx: 2, fill: lvColor(e.l) }),
+      sv('text', { x: colX[2] + 14, y: y + 4 }, trunc(e.path, colW[2] - 150)),
+      sv('text', { x: W - 34, y: y + 4, 'text-anchor': 'end', class: 'sm' }, LV[e.l].n + (D.subSize[e.i] > 1 ? ' · ' + fmtN(D.subSize[e.i] - 1) + ' subf.' : '')),
+      sv('text', { class: 'open', x: W - 16, y: y + 4, 'text-anchor': 'middle', onclick: ev => { ev.stopPropagation(); D.ui.pendingReveal = e.i; setTab('tree'); } }, '↗', sv('title', null, 'Open in tree')),
+      sv('title', null, pathOf(e.i) + '\n' + LV[e.l].n + ' via ' + e.sids.map(s => chainText(c.tok, s, c.sid)).join('; ') + '\nClick: pin highlight · ↗: open in tree'));
+    fNodes.set(e.i, g); svg.append(g);
+  });
+  const info = el('div', { class: 'pininfo' }); D.ui.graphInfo = info;
+  host.append(info, svg);
+  if (entries.length > MAXF) host.append(el('div', { class: 'hint', style: 'margin-top:8px' }, `Showing the first ${MAXF} of ${entries.length} entry points. Full list: "CSV: entry points" on the Principal access tab.`));
+  applyPins();
+}
+
+/* ====================================================================
+   View: folders (all)
+   ==================================================================== */
+function renderFoldersView() {
+  if (!D.ui.treeF) {
+    const tb = $('#tbFolders'); tb.innerHTML = '';
+    const visible = () => true;
+    const t = new Tree($('#treeF'), {
+      visible,
+      iconClass: i => D.inhOff[i] ? 'lv3' : D.explicit[i] ? 'lv2' : 'lv0',
+      decorate(row, i) {
+        if (D.files[i] > 0) row.append(el('span', { class: 'cnt' }, filesTxt(D.files[i])));
+        if (D.inhOff[i]) row.append(el('span', { class: 'tag inh', title: 'Inheritance disabled' }, 'inherit. off'));
+        else if (D.explicit[i]) row.append(el('span', { class: 'tag', title: 'Has explicit ACL entries' }, 'explicit: ' + D.explicit[i]));
+        if (D.err.has(i)) row.append(el('span', { class: 'tag err', title: D.err.get(i) }, 'read error'));
+      },
+      onSelect: i => showDetails('folders', i, null),
+    });
+    tb.append(folderSearch(visible, i => t.reveal(i)),
+      el('span', { class: 'hint' }, 'Icon colour: yellow - inheritance disabled, green - has explicit entries, grey - inherited only.'));
+    D.ui.treeF = t;
+  }
+  if (D.ui.pendingFolder) { const i = D.ui.pendingFolder; D.ui.pendingFolder = null; setTimeout(() => D.ui.treeF.reveal(i), 0); }
+}
+
+/* ====================================================================
+   View: matrix
+   ==================================================================== */
+const LV_LETTER = { '-1': '?', 0: '', 1: '·', 2: 'R', 3: 'W', 4: 'M', 5: 'F' };
+const MX = { orient: 'users', mode: 'user', root: 0, expanded: null, q: '', dept: '', disabled: false, letters: true, hideEmpty: true, byDept: true, flash: 0 };
+const MAXCOLS = 200, MAXKIDS = 300;
+
+function mxData(mode) {
+  D.mxCache ||= {};
+  if (D.mxCache[mode]) return D.mxCache[mode];
+  let ps;
+  if (mode === 'user') ps = D.users.map(s => D.P.get(s));
+  else ps = [...D.aclSids].map(s => D.P.get(s)).filter(p => p && (p.type === 'group' || p.type === 'wk' || p.type === 'orphan') && p.sid !== WK.CREATOR);
+  const rows = [];
+  for (const p of ps) {
+    const tok = D.tok.get(p.sid) || buildToken(p.sid); const cap = shareCap(tok, p.sid);
+    const lvA = new Int8Array(D.aclFolders.length).fill(-1);
+    for (const id of D.aclIds) lvA[id] = Math.min(evalAcl(id, tok).lv, cap);
+    const sub = new Int8Array(D.N + 1).fill(-1);
+    for (let i = 1; i <= D.N; i++) if (D.exists[i]) sub[i] = D.acl[i] ? lvA[D.acl[i]] : -1;
+    for (let k = D.order.length - 1; k >= 0; k--) { const i = D.order[k], pp = D.parent[i]; if (pp && sub[i] > sub[pp]) sub[pp] = sub[i]; }
+    rows.push({ p, lvA, sub });
+  }
+  return (D.mxCache[mode] = rows);
+}
+const mxLv = (r, i) => D.acl[i] ? r.lvA[D.acl[i]] : -1;
+function kidsArr(i) { const a = []; for (let k = D.kStart[i]; k < D.kStart[i + 1]; k++) a.push(D.kids[k]); return a; }
+
+function mxCell(r, i) {
+  const l = mxLv(r, i); const deeper = l < 2 && r.sub[i] >= 2;
+  const shownL = l < 2 && l !== -1 ? (l === 1 ? 1 : 0) : l;
+  const tip = `${r.p.name} → ${pathOf(i)}\n${LV[l].n}${r.sub[i] > Math.max(l, 0) ? '\ndeeper: up to "' + LV[r.sub[i]].n + '"' : ''}\nClick: open in Principal access`;
+  return el('td', null, el('div', { class: 'c ' + LV[shownL].c + (deeper ? ' deeper' : ''), title: tip, onclick: () => { S.sel = r.p.sid; D.ui.pendingReveal = i; setTab('tree'); } }, MX.letters ? LV_LETTER[l] : ''));
+}
+function mxFilterRows(rows) {
+  const q = MX.q.trim().toLowerCase();
+  return rows.filter(r => {
+    const p = r.p;
+    if (MX.mode === 'user' && !MX.disabled && !p.enabled) return false;
+    if (MX.mode === 'user' && MX.dept && (p.dept || '') !== MX.dept) return false;
+    if (q && !((p.name || '') + ' ' + (p.sam || '') + ' ' + (p.full || '') + ' ' + (p.dept || '')).toLowerCase().includes(q)) return false;
+    return true;
+  });
+}
+function principalHeader(p, k, n) {
+  const lbl = MX.mode === 'user' ? (p.sam || p.name) : pShort(p.sid);
+  return el('th', { class: 'rh' + (p.type === 'user' && !p.enabled ? ' dis' : ''), 'data-c': k, style: `z-index:${3 + n - k}` },
+    el('div', null, el('span', { title: (p.full || p.name) + (p.dept ? ' · ' + p.dept : '') + '\nClick: open principal', onclick: () => pick(p.sid) }, lbl)));
+}
+function attachCrosshair(table) {
+  let last = null;
+  table.addEventListener('mouseover', e => {
+    const td = e.target.closest('td'); if (!td || !td.parentElement) return;
+    const idx = [...td.parentElement.children].indexOf(td);
+    const th = table.tHead.rows[0].children[idx];
+    if (last && last !== th) last.classList.remove('hi');
+    if (th && th.classList.contains('rh')) { th.classList.add('hi'); last = th; }
+  });
+  table.addEventListener('mouseleave', () => { if (last) last.classList.remove('hi'); last = null; });
+}
+
+function renderMatrixView() {
+  if (!MX.root) MX.root = D.root;
+  if (!MX.expanded) MX.expanded = new Set([D.root]);
+  const tb = $('#tbMatrix'); tb.innerHTML = '';
+  const bar = el('div', { class: 'mxbar' }); tb.replaceWith(bar); bar.id = 'tbMatrix';
+  const t1 = el('div', { class: 'toolbar' });
+  const seg = (opts, cur, set) => el('div', { class: 'seg' }, opts.map(([v, n, tip]) => el('button', { class: cur === v ? 'on' : '', title: tip || '', onclick: () => { set(v); renderMatrixView(); } }, n)));
+  const depts = [...new Set(D.users.map(s => D.P.get(s).dept || '').filter(Boolean))].sort((a, b) => a.localeCompare(b, undefined));
+  const qInp = el('input', { class: 'inp', style: 'width:200px', placeholder: MX.mode === 'user' ? 'Filter users…' : 'Filter groups…', value: MX.q });
+  let qt; qInp.addEventListener('input', () => { clearTimeout(qt); qt = setTimeout(() => { MX.q = qInp.value; drawBody(); }, 200); });
+  t1.append(...[
+    seg([['users', 'Rows: users', 'Principals as rows, folders as columns - drill into folders via column headers'], ['folders', 'Rows: folders', 'Folder tree as rows (expand ▶), principals as columns']], MX.orient, v => MX.orient = v),
+    seg([['user', 'Users'], ['group', 'Groups in ACLs']], MX.mode, v => { MX.mode = v; MX.q = ''; }),
+    qInp,
+    MX.mode === 'user' && depts.length ? el('select', { class: 'inp', style: 'width:auto', onchange: e => { MX.dept = e.target.value; drawBody(); } }, el('option', { value: '' }, 'All departments'), depts.map(d => el('option', { value: d, selected: MX.dept === d }, d))) : null,
+    MX.mode === 'user' ? el('label', null, el('input', { type: 'checkbox', checked: MX.disabled, onchange: e => { MX.disabled = e.target.checked; drawBody(); } }), 'disabled') : null,
+    el('label', { title: 'Hide rows/columns without read access anywhere in the current view' }, el('input', { type: 'checkbox', checked: MX.hideEmpty, onchange: e => { MX.hideEmpty = e.target.checked; drawBody(); } }), 'hide empty'),
+    el('label', null, el('input', { type: 'checkbox', checked: MX.letters, onchange: e => { MX.letters = e.target.checked; drawBody(); } }), 'letters'),
+    MX.orient === 'users' && MX.mode === 'user' ? el('label', null, el('input', { type: 'checkbox', checked: MX.byDept, onchange: e => { MX.byDept = e.target.checked; drawBody(); } }), 'group by dept.') : null,
+    el('button', { class: 'btn small', onclick: () => exportMatrix() }, 'CSV'),
+    el('div', { class: 'spacer' }),
+    el('div', { class: 'legend' }, [5, 4, 3, 2].map(l => lvBadge(l, ' ' + LV_LETTER[l])), el('span', null, '· ● access only deeper'))].filter(Boolean));
+  bar.append(t1);
+  if (MX.orient === 'users') {
+    const cr = el('div', { class: 'crumbs' }, el('span', { class: 'hint', style: 'margin-right:6px' }, 'Columns:'));
+    const chain = [...ancestors(MX.root), MX.root];
+    chain.forEach((f, k) => {
+      if (k) cr.append(el('span', { class: 'sep' }, '›'));
+      cr.append(el('a', { class: f === MX.root ? 'cur' : '', title: pathOf(f), onclick: () => { MX.root = f; renderMatrixView(); } }, k === 0 ? D.name[f] : D.name[f]));
+    });
+    if (MX.root !== D.root) cr.append(el('button', { class: 'btn small', style: 'margin-left:10px', onclick: () => { MX.root = D.parent[MX.root] || D.root; renderMatrixView(); } }, '↑ Up'));
+    cr.append(el('span', { class: 'hint', style: 'margin-left:10px' }, 'Click a column header to open its subfolders.'));
+    bar.append(cr);
+  } else {
+    const cr = el('div', { class: 'crumbs' });
+    cr.append(folderSearch(() => true, i => { for (const a of ancestors(i)) MX.expanded.add(a); MX.flash = i; drawBody(); }),
+      el('button', { class: 'btn small', style: 'margin-left:8px', onclick: () => { MX.expanded = new Set([D.root]); drawBody(); } }, 'Collapse all'),
+      el('span', { class: 'hint', style: 'margin-left:10px' }, '▶ expands a folder · click a folder name to open it in Folders · click a column name to open that principal.'));
+    bar.append(cr);
+  }
+  drawBody();
+
+  function drawBody() {
+    const host = $('#matrix'); host.innerHTML = '';
+    if (!D.mxCache || !D.mxCache[MX.mode]) {
+      host.append(el('div', { class: 'empty' }, 'Computing…'));
+      setTimeout(() => { mxData(MX.mode); drawBody(); }, 20);
+      return;
+    }
+    const rows = mxFilterRows(mxData(MX.mode));
+    if (MX.orient === 'users') drawUsersOrient(host, rows); else drawFoldersOrient(host, rows);
+  }
+}
+
+function drawUsersOrient(host, rows) {
+  let cols = kidsArr(MX.root);
+  const total = cols.length;
+  cols = [MX.root, ...cols.slice(0, MAXCOLS)];
+  if (MX.hideEmpty) rows = rows.filter(r => cols.some(f => r.sub[f] >= 2));
+  if (MX.hideEmpty) cols = cols.filter((f, k) => k === 0 || rows.some(r => r.sub[f] >= 2));
+  const maxLen = Math.max(13, ...cols.slice(1).map(f => D.name[f].length + 2));
+  host.style.setProperty('--mxh', Math.min(190, 30 + Math.min(maxLen, 32) * 5.2) + 'px');
+  const thead = el('thead', null, el('tr', null,
+    el('th', { class: 'corner', style: `z-index:${cols.length + 10}` }, `${fmtN(rows.length)} ${MX.mode === 'user' ? 'users' : 'principals'} × ${fmtN(cols.length)} folders`),
+    cols.map((f, k) => {
+      const nk = D.kStart[f + 1] - D.kStart[f];
+      const isSelf = k === 0;
+      const lbl = isSelf ? '(this folder)' : D.name[f] + (nk ? ' ›' : '');
+      return el('th', { class: 'rh' + (isSelf ? ' self' : ''), 'data-c': k, style: `z-index:${3 + cols.length - k}` }, el('div', null, el('span', {
+        title: pathOf(f) + (nk ? `\n${nk} subfolders - click to drill down` : '\nno subfolders') + (D.files[f] > 0 ? `\n${filesTxt(D.files[f])}` : ''),
+        onclick: () => { if (!isSelf && nk) { MX.root = f; renderMatrixView(); } else goFolder(f); }
+      }, lbl)));
+    })));
+  const tbody = el('tbody');
+  let lastDept = null;
+  const list = MX.mode === 'user' && MX.byDept ? [...rows].sort((a, b) => (a.p.dept || '￿').localeCompare(b.p.dept || '￿', undefined) || a.p.name.localeCompare(b.p.name, undefined)) : [...rows].sort((a, b) => a.p.name.localeCompare(b.p.name, undefined));
+  for (const r of list) {
+    const p = r.p;
+    if (MX.mode === 'user' && MX.byDept && (p.dept || '') !== lastDept) { lastDept = p.dept || ''; tbody.append(el('tr', null, el('th', { class: 'dept', colspan: cols.length + 1 }, lastDept || 'no department'))); }
+    tbody.append(el('tr', null,
+      el('th', { title: (p.full || p.name) + (p.dept ? ' · ' + p.dept : '') }, el('a', { onclick: () => pick(p.sid), style: p.type === 'user' && !p.enabled ? 'text-decoration:line-through;color:var(--muted)' : '' }, p.name)),
+      cols.map(f => mxCell(r, f))));
+  }
+  const table = el('table', { class: 'mx' }, thead, tbody);
+  attachCrosshair(table);
+  host.append(el('div', { class: 'mxwrap' }, table));
+  if (total > MAXCOLS) host.prepend(el('div', { class: 'mxnote' }, `Showing the first ${MAXCOLS} of ${fmtN(total)} subfolders. Use "Rows: folders" with search for a specific one.`));
+  if (!rows.length) host.append(el('div', { class: 'empty' }, 'No rows match the filters.'));
+}
+
+function drawFoldersOrient(host, prs) {
+  // visible folder rows from expanded set
+  const vis = [];
+  const walk = (i, depth) => {
+    vis.push({ i, depth });
+    if (!MX.expanded.has(i)) return;
+    const ks = kidsArr(i);
+    const lim = MX.expanded.has('all:' + i) ? ks.length : MAXKIDS;
+    for (const c of ks.slice(0, lim)) walk(c, depth + 1);
+    if (ks.length > lim) vis.push({ more: i, depth: depth + 1, left: ks.length - lim });
+  };
+  walk(D.root, 0);
+  let cols = [...prs].sort((a, b) => (a.p.sam || a.p.name).localeCompare(b.p.sam || b.p.name, undefined));
+  if (MX.hideEmpty) cols = cols.filter(r => vis.some(v => v.i && r.sub[v.i] >= 2));
+  const rowsVis = MX.hideEmpty ? vis.filter(v => !v.i || v.i === D.root || cols.some(r => r.sub[v.i] >= 2)) : vis;
+  const maxLen = Math.max(4, ...cols.map(r => (MX.mode === 'user' ? (r.p.sam || r.p.name) : pShort(r.p.sid)).length));
+  host.style.setProperty('--mxh', Math.min(170, 30 + Math.min(maxLen, 28) * 5.2) + 'px');
+  const thead = el('thead', null, el('tr', null, el('th', { class: 'corner', style: `z-index:${cols.length + 10}` }, `${fmtN(cols.length)} ${MX.mode === 'user' ? 'users' : 'principals'}`), cols.map((r, k) => principalHeader(r.p, k, cols.length))));
+  const tbody = el('tbody');
+  let flashRow = null;
+  for (const v of rowsVis) {
+    if (v.more) {
+      tbody.append(el('tr', { class: 'more' }, el('th', { style: `padding-left:${12 + v.depth * 16 + 18}px` }, el('button', { onclick: () => { MX.expanded.add('all:' + v.more); renderBodyAgain(); } }, `Show ${fmtN(v.left)} more…`))));
+      continue;
+    }
+    const i = v.i; const nk = D.kStart[i + 1] - D.kStart[i]; const open = MX.expanded.has(i);
+    const tg = el('span', { class: 'tree-tg' + (nk ? '' : ' none'), onclick: () => { if (open) MX.expanded.delete(i); else MX.expanded.add(i); renderBodyAgain(); } }, open ? '▼' : '▶');
+    const th = el('th', { style: `padding-left:${12 + v.depth * 16}px`, title: pathOf(i) },
+      tg, el('span', { class: 'fname', onclick: () => goFolder(i) }, D.name[i]),
+      nk ? el('span', { class: 'fcnt' }, fmtN(nk)) : null);
+    const tr = el('tr', { class: MX.flash === i ? 'flash' : '' }, th, cols.map(r => mxCell(r, i)));
+    if (MX.flash === i) flashRow = tr;
+    tbody.append(tr);
+  }
+  const table = el('table', { class: 'mx' }, thead, tbody);
+  attachCrosshair(table);
+  host.append(el('div', { class: 'mxwrap' }, table));
+  if (flashRow) { setTimeout(() => flashRow.scrollIntoView({ block: 'center' }), 0); MX.flash = 0; }
+  if (!cols.length) host.append(el('div', { class: 'empty' }, 'No principals match the filters.'));
+  function renderBodyAgain() { const sc = host.scrollTop, sl = host.scrollLeft; host.innerHTML = ''; drawFoldersOrient(host, prs); host.scrollTop = sc; host.scrollLeft = sl; }
+}
+
+function exportMatrix() {
+  const rows = mxFilterRows(mxData(MX.mode));
+  const nameOf = p => p.type === 'user' ? (p.full || p.sam) : (p.full || p.name);
+  if (MX.orient === 'users') {
+    const cols = [MX.root, ...kidsArr(MX.root)];
+    downloadCSV(`matrix_${safeName(D.name[MX.root])}.csv`, ['Principal', 'Department', ...cols.map(f => f === MX.root ? D.name[f] + ' (this folder)' : D.name[f])],
+      rows.map(r => [nameOf(r.p), r.p.dept || '', ...cols.map(f => LV[mxLv(r, f)].n + (mxLv(r, f) < 2 && r.sub[f] >= 2 ? ' (deeper: ' + LV[r.sub[f]].n + ')' : ''))]));
+  } else {
+    const vis = []; const walk = i => { vis.push(i); if (MX.expanded.has(i)) for (const c of kidsArr(i)) walk(c); }; walk(D.root);
+    downloadCSV('matrix_folders.csv', ['Folder', ...rows.map(r => nameOf(r.p))], vis.map(i => [pathOf(i), ...rows.map(r => LV[mxLv(r, i)].n)]));
+  }
+}
+
+/* ====================================================================
+   View: compare
+   ==================================================================== */
+const CMP = { a: null, b: null, filter: 'diff' };
+const CK = { 1: { n: 'Only A', c: 'k1' }, 2: { n: 'Only B', c: 'k2' }, 3: { n: 'Different level', c: 'k3' }, 4: { n: 'Same', c: 'k4' } };
+const CF = { diff: [14, 'All differences'], onlyA: [2, 'Only A'], onlyB: [4, 'Only B'], level: [8, 'Different level'], all: [30, 'Everything accessible'] };
+
+function cmpData() {
+  const key = CMP.a + '|' + CMP.b;
+  if (D.cmpCache && D.cmpCache.key === key) return D.cmpCache;
+  const A = compute(CMP.a), B = compute(CMP.b);
+  const N = D.N, kind = new Uint8Array(N + 1), mask = new Uint8Array(N + 1), cnt = [0, 0, 0, 0, 0], ent = [0, 0, 0, 0, 0];
+  for (let i = 1; i <= N; i++) {
+    if (!D.exists[i]) continue;
+    const la = A.lv[i], lb = B.lv[i];
+    let k = 0;
+    if (la !== -1 && lb !== -1) { const ha = la >= 2, hb = lb >= 2; k = !ha && !hb ? 0 : ha && !hb ? 1 : !ha && hb ? 2 : la !== lb ? 3 : 4; }
+    kind[i] = k; cnt[k]++; mask[i] = k ? 1 << k : 0;
+  }
+  for (let i = 1; i <= N; i++) if (D.exists[i] && kind[i] && kind[i] < 4 && (!D.parent[i] || kind[D.parent[i]] !== kind[i])) ent[kind[i]]++;
+  for (let k = D.order.length - 1; k >= 0; k--) { const i = D.order[k], p = D.parent[i]; if (p) mask[p] |= mask[i]; }
+  const ga = new Set([...A.tok.keys()].filter(s => s !== A.sid)), gb = new Set([...B.tok.keys()].filter(s => s !== B.sid));
+  const groups = { onlyA: [...ga].filter(s => !gb.has(s)), onlyB: [...gb].filter(s => !ga.has(s)), common: [...ga].filter(s => gb.has(s)) };
+  return (D.cmpCache = { key, A, B, kind, mask, cnt, ent, groups });
+}
+function principalPicker(tag, cur, onPick) {
+  const wrap = el('div', { class: 'ppick searchwrap' });
+  const p = cur ? D.P.get(cur) : null;
+  const inp = el('input', { class: 'inp', placeholder: 'Search user or group…', value: p ? p.name : '' });
+  const res = el('div', { class: 'searchres' });
+  wrap.append(...[el('span', { class: 'abtag ' + tag.toLowerCase() }, tag), p ? pIcon(p) : null, inp, res].filter(Boolean));
+  inp.addEventListener('focus', () => { inp.select(); run(); });
+  inp.addEventListener('input', run);
+  document.addEventListener('click', e => { if (!wrap.contains(e.target)) res.classList.remove('on'); });
+  function run() {
+    const q = inp.value.trim().toLowerCase(); res.innerHTML = '';
+    const showAll = p && inp.value === p.name;
+    const arr = [...D.P.values()].filter(x => (x.type === 'user' || x.type === 'group' || x.sid === '__ANY__' || ((x.type === 'wk' || x.type === 'orphan') && D.aclSids.has(x.sid))) &&
+      (showAll || !q || ((x.name || '') + ' ' + (x.full || '') + ' ' + (x.sam || '') + ' ' + (x.dept || '')).toLowerCase().includes(q)))
+      .sort((x, y) => (x.type === 'user' ? 0 : 1) - (y.type === 'user' ? 0 : 1) || x.name.localeCompare(y.name, undefined)).slice(0, 80);
+    for (const x of arr) res.append(el('div', { style: 'display:flex;gap:8px;align-items:center', onclick: () => { res.classList.remove('on'); onPick(x.sid); } }, pIcon(x),
+      el('div', { style: 'min-width:0' }, el('div', null, x.name, x.type === 'user' && !x.enabled ? el('span', { class: 'tag off', style: 'margin-left:6px' }, 'disabled') : null), el('div', { class: 'p' }, x.type === 'user' ? [x.sam, x.dept].filter(Boolean).join(' · ') : x.type === 'group' ? 'group' + (x.scope ? ' · ' + x.scope : '') : x.full))));
+    if (!arr.length) res.append(el('div', { class: 'muted' }, 'Nothing found'));
+    res.classList.add('on');
+  }
+  return wrap;
+}
+function cmpLv(l) { return lvBadge(l >= 2 || l === -1 ? l : 0); }
+
+function renderCompareView() {
+  closeDetails('compare');
+  const head = $('#cmpHead'); head.innerHTML = '';
+  const tb = $('#tbCmp'); tb.innerHTML = '';
+  const tree = $('#treeC'); tree.innerHTML = '';
+  const box = el('div', { class: 'phead' });
+  const pickers = el('div', { class: 'cmp-pick' },
+    principalPicker('A', CMP.a, s => { CMP.a = s; renderCompareView(); }),
+    el('button', { class: 'btn small', title: 'Swap A and B', onclick: () => { [CMP.a, CMP.b] = [CMP.b, CMP.a]; renderCompareView(); } }, '⇄'),
+    principalPicker('B', CMP.b, s => { CMP.b = s; renderCompareView(); }));
+  box.append(pickers); head.append(box);
+  if (!CMP.a || !CMP.b) {
+    tree.append(el('div', { class: 'placeholder', style: 'min-height:55vh' }, el('div', { class: 'big' }, '⇄'), el('b', null, 'Choose two users or groups to compare'),
+      el('div', null, 'You will see which folders only A can access, which only B can, and where their access level differs.'),
+      el('div', { class: 'hint' }, 'Tip: "Compare…" in any principal header opens this view with that principal as A.')));
+    return;
+  }
+  if (CMP.a === CMP.b) { tree.append(el('div', { class: 'empty' }, 'A and B are the same principal.')); return; }
+  const x = cmpData();
+  // summary cards
+  const cards = el('div', { class: 'cmp-cards' });
+  const card = (k, filt) => el('div', { class: 'cmpc ' + CK[k].c + (CMP.filter === filt ? ' on' : ''), onclick: () => { CMP.filter = filt; renderCompareView(); } },
+    el('b', null, fmtN(x.cnt[k])), el('span', null, CK[k].n + ' (folders)'), k < 4 ? el('small', null, `${fmtN(x.ent[k])} entry ${x.ent[k] === 1 ? 'point' : 'points'}`) : null);
+  cards.append(card(1, 'onlyA'), card(2, 'onlyB'), card(3, 'level'), card(4, 'all'));
+  box.append(cards);
+  // groups diff
+  const gl = (title, arr, cls) => {
+    const row = el('div', { class: 'chips' }, el('span', { class: 'hint', style: 'margin-right:4px;min-width:110px' }, title));
+    for (const g of arr.sort((p1, p2) => pShort(p1).localeCompare(pShort(p2), undefined))) row.append(el('span', { class: 'chip ' + cls, title: pName(g), onclick: () => pick(g) }, pShort(g)));
+    if (!arr.length) row.append(el('span', { class: 'hint' }, '-'));
+    return row;
+  };
+  box.append(gl('Groups only A:', x.groups.onlyA, 'ca'), gl('Groups only B:', x.groups.onlyB, 'cb'), el('div', { class: 'hint' }, `${x.groups.common.length} groups in common`));
+  // toolbar
+  const fm = CF[CMP.filter][0];
+  tb.append(el('label', null, 'Show:', el('select', { onchange: e => { CMP.filter = e.target.value; renderCompareView(); } }, Object.entries(CF).map(([k, v]) => el('option', { value: k, selected: CMP.filter === k }, v[1])))),
+    folderSearch(i => (x.mask[i] & fm) !== 0, i => t.reveal(i)),
+    el('button', { class: 'btn small primary', onclick: () => exportCompareXlsx() }, '⤓ Excel report'),
+    el('div', { class: 'spacer' }),
+    el('div', { class: 'legend' }, el('span', { class: 'fi-dot k1' }), 'only A', el('span', { class: 'fi-dot k2' }), 'only B', el('span', { class: 'fi-dot k3' }), 'different level', el('span', { class: 'fi-dot k4' }), 'same'));
+  const t = new Tree(tree, {
+    visible: i => (x.mask[i] & fm) !== 0,
+    emptyText: 'No folders for this filter.',
+    iconClass: i => x.kind[i] ? CK[x.kind[i]].c : 'lv0',
+    decorate(row, i) {
+      const k = x.kind[i];
+      if (!((1 << k) & fm)) row.classList.add('pass');
+      const la = x.A.lv[i], lb = x.B.lv[i];
+      row.append(el('span', { class: 'abtag a' }, 'A'), cmpLv(la), el('span', { class: 'abtag b' }, 'B'), cmpLv(lb));
+      const p = D.parent[i];
+      if (k && k < 4 && (!p || x.kind[p] !== k)) {
+        const ra = D.acl[i] ? x.A.res[D.acl[i]] : null, rb = D.acl[i] ? x.B.res[D.acl[i]] : null;
+        const va = la >= 2 ? viaText(x.A, ra) : '', vb = lb >= 2 ? viaText(x.B, rb) : '';
+        row.append(el('span', { class: 'via' }, [va ? 'A via ' + va : '', vb ? 'B via ' + vb : ''].filter(Boolean).join(' · ')));
+      }
+      if (D.inhOff[i]) row.append(el('span', { class: 'tag inh', title: 'Inheritance disabled' }, 'inherit. off'));
+    },
+    onSelect: i => showDetails('compare', i, x.A, x.B),
+  });
+  D.ui.treeC = t;
+}
+
+async function exportCompareXlsx() {
+  toast('Building Excel…'); await new Promise(r => setTimeout(r, 30));
+  const x = cmpData(); const A = x.A, B = x.B; const pa = D.P.get(CMP.a), pb = D.P.get(CMP.b);
+  const fullPath = new Array(D.N + 1);
+  for (const i of D.order) fullPath[i] = D.parent[i] ? fullPath[D.parent[i]] + '\\' + D.name[i] : D.name[i];
+  const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  const lvc = l => { const v = l >= 2 || l === -1 ? l : 0; return { v: LV_EN[v], s: XS_LV[v] }; };
+  const via = (c, i) => { const r = D.acl[i] ? c.res[D.acl[i]] : null; return r && c.lv[i] >= 2 ? [...new Set(r.gs.map(g => g.sid))].map(s => chainText(c.tok, s, c.sid)).join('; ') : ''; };
+  const diff = [], entries = [];
+  for (let i = 1; i <= D.N; i++) { const k = x.kind[i]; if (!k || k === 4) continue; diff.push(i); if (!D.parent[i] || x.kind[D.parent[i]] !== k) entries.push(i); }
+  const by = (p, q) => coll.compare(fullPath[p], fullPath[q]);
+  diff.sort(by); entries.sort(by);
+  const kindCell = k => ({ v: CK[k].n, s: k === 1 ? XS.bold : k === 2 ? XS.bold : XS.cell });
+  const S1 = { name: 'Summary', widths: [34, 44, 44], rows: [], merges: ['A1:C1', 'A2:C2'], heights: { 0: 26 } };
+  const R = S1.rows;
+  R.push([{ v: `Access comparison - ${pa.name} vs ${pb.name}`, s: XS.title }]);
+  R.push([{ v: `${D.name[D.root]} · snapshot ${fmtDate(D.meta.EndUtc)}${D.meta.Computer ? ' · ' + D.meta.Computer : ''}`, s: XS.muted }]);
+  R.push([]);
+  R.push([{ v: '', s: XS.header }, { v: 'A', s: XS.header }, { v: 'B', s: XS.header }]);
+  const pinfo = p => p.type === 'user' ? (p.enabled ? 'User' : 'User (disabled)') + (p.dept ? ' · ' + p.dept : '') : p.type === 'group' ? 'Group' + (p.scope ? ' (' + p.scope + ')' : '') : p.type;
+  R.push([{ v: 'Name', s: XS.label }, { v: pa.name, s: XS.bold }, { v: pb.name, s: XS.bold }]);
+  R.push([{ v: 'Account', s: XS.label }, { v: pa.full, s: XS.cell }, { v: pb.full, s: XS.cell }]);
+  R.push([{ v: 'Type', s: XS.label }, { v: pinfo(pa), s: XS.cell }, { v: pinfo(pb), s: XS.cell }]);
+  const accA = x.cnt[1] + x.cnt[3] + x.cnt[4], accB = x.cnt[2] + x.cnt[3] + x.cnt[4];
+  R.push([{ v: 'Folders with access', s: XS.label }, { v: accA, s: XS.num }, { v: accB, s: XS.num }]);
+  R.push([]);
+  R.push([{ v: 'Differences', s: XS.sub }]);
+  R.push([{ v: 'Only A has access', s: XS.label }, { v: x.cnt[1], s: XS.num }, { v: `${x.ent[1]} entry points`, s: XS.cell }]);
+  R.push([{ v: 'Only B has access', s: XS.label }, { v: x.cnt[2], s: XS.num }, { v: `${x.ent[2]} entry points`, s: XS.cell }]);
+  R.push([{ v: 'Both, different level', s: XS.label }, { v: x.cnt[3], s: XS.num }, { v: `${x.ent[3]} entry points`, s: XS.cell }]);
+  R.push([{ v: 'Both, same level', s: XS.label }, { v: x.cnt[4], s: XS.num }, { v: '', s: XS.cell }]);
+  R.push([]);
+  R.push([{ v: 'Group membership', s: XS.sub }]);
+  R.push([{ v: 'Only A', s: XS.header }, { v: 'Only B', s: XS.header }, { v: 'Common', s: XS.header }]);
+  const gA = x.groups.onlyA.map(pName).sort(), gB = x.groups.onlyB.map(pName).sort(), gC = x.groups.common.map(pName).sort();
+  for (let k = 0; k < Math.max(gA.length, gB.length, gC.length, 1); k++) R.push([{ v: gA[k] || '', s: XS.cell }, { v: gB[k] || '', s: XS.cell }, { v: gC[k] || '', s: XS.cell }]);
+  R.push([]);
+  R.push([{ v: '"Entry points" lists the top folders where a difference starts; "All differences" lists every folder that differs. Folder level only; Deny before Allow; nested groups and share permissions included.', s: XS.muted }]);
+  S1.merges.push(`A${R.length}:C${R.length}`); S1.heights[R.length - 1] = 32;
+  const hdr = ['Folder', 'Difference', 'A level', 'B level', 'A via', 'B via', 'Subfolders'];
+  const rowOf = i => [{ v: fullPath[i], s: XS.cell }, kindCell(x.kind[i]), lvc(A.lv[i]), lvc(B.lv[i]), { v: via(A, i), s: XS.cell }, { v: via(B, i), s: XS.cell }, { v: D.subSize[i] - 1, s: XS.num }];
+  const t1 = tableBlock(1, hdr, entries.map(rowOf)), t2 = tableBlock(1, hdr, diff.map(rowOf));
+  const W = [80, 16, 10, 10, 36, 36, 11];
+  const blob = await buildXlsx([S1, { name: 'Entry points', widths: W, rows: t1.rows, freeze: 1, filter: t1.filter }, { name: 'All differences', widths: W, rows: t2.rows, freeze: 1, filter: t2.filter }]);
+  const nm = p => safeName(p.type === 'user' ? p.sam : pShort(p.sid)).replace(/\s+/g, '_');
+  saveBlob(blob, `Compare_${nm(pa)}_vs_${nm(pb)}_${(D.meta.EndUtc || '').slice(0, 10)}.xlsx`);
+  toast('Excel saved');
+}
+
+/* ====================================================================
+   View: issues
+   ==================================================================== */
+function renderIssuesView() {
+  const host = $('#issues');
+  if (D.ui.issuesDone) return;
+  host.innerHTML = '<div class="empty">Analysing…</div>';
+  setTimeout(() => { const t0 = performance.now(); const list = computeIssues(); drawIssues(host, list); D.ui.issuesDone = true; console.log('issues ms', performance.now() - t0); }, 20);
+}
+function adminSet() {
+  const s = new Set([WK.SYSTEM, WK.BADMINS, WK.CREATOR, D.domSid + '-500', D.domSid + '-512', D.domSid + '-519', D.domSid + '-518']);
+  const q = [WK.BADMINS, D.domSid + '-512', D.domSid + '-519'];
+  for (let k = 0; k < q.length; k++) for (const m of D.membersOf.get(q[k]) || []) if (!s.has(m)) { s.add(m); q.push(m); }
+  return s;
+}
+function computeIssues() {
+  const I = [];
+  const fLink = i => el('a', { onclick: () => goFolder(i), title: pathOf(i) }, relPath(i));
+  const pLink = s => el('a', { onclick: () => pick(s) }, pName(s));
+  const add = (o) => I.push(o);
+  const snap = D.meta.EndUtc ? new Date(D.meta.EndUtc) : new Date();
+  const base = compute('__ANY__');
+  const ust = new Map(); for (const s of D.users) ust.set(s, userStats(s, base));
+  const userMax = new Map([...ust].map(([k, v]) => [k, v.max]));
+  const admins = adminSet();
+
+  // 0. environment
+  const env = [];
+  if (D.meta.IsDomainController) env.push(['The file server is a domain controller', `${D.meta.Computer}: data shares on a DC widen the attack surface; BUILTIN\\ groups here are domain groups and apply on all DCs.`]);
+  if (D.share) {
+    if (D.share.FolderEnumerationMode !== 'AccessBased') env.push(['Access-Based Enumeration is off', `Share "${D.share.Name}": users see the names of all folders, even without access to them.`]);
+    const ev = D.shareAces.find(a => a.Sid === WK.EVERYONE && a.AccessControlType === 'Allow' && a.AccessRight === 'Full');
+    if (ev) env.push(['Share permissions: Everyone - Full', `Share "${D.share.Name}": access control relies entirely on NTFS permissions. This is common practice, but confirm it is intended.`]);
+  }
+  add({ id: 'env', sev: 'info', title: 'Environment', count: env.length, desc: 'General observations about the server and the share.', cols: ['Observation', 'Details'], rows: env.map(e => [e[0], e[1]]), csv: env });
+
+  // 1. orphan SIDs
+  const orph = [...D.P.values()].filter(p => p.type === 'orphan' && D.aclSids.has(p.sid));
+  const orRows = orph.map(p => {
+    const ex = D.explicitBySid.get(p.sid) || [];
+    let total = 0; for (const id of D.aclIds) if (D.ACL[id].some(a => a.sid === p.sid)) total += D.aclFolders[id];
+    const kinds = [...new Set(ex.map(x => (x.ace.allow ? 'Allow ' : 'Deny ') + rightsName(x.ace.m, x.ace.rights)))].join('; ');
+    return { p, ex, total, kinds };
+  }).sort((a, b) => b.total - a.total);
+  add({ id: 'orphan', sev: 'warn', title: 'Permissions for deleted accounts (unresolvable SIDs)', count: orRows.length,
+    desc: 'ACL entries for SIDs that no longer exist in AD. They can be removed - especially Deny entries on the root.',
+    cols: ['SID', 'Entries', 'Explicit on folders', 'Folders affected', 'Example'],
+    rows: orRows.map(r => [el('span', { class: 'mono' }, r.p.sid), r.kinds, r.ex.length, fmtN(r.total), r.ex[0] ? fLink(r.ex[0].f) : '']),
+    csv: orRows.map(r => [r.p.sid, r.kinds, r.ex.length, r.total, r.ex.map(x => pathOf(x.f)).join(' | ')]) });
+
+  // 2. disabled users with access
+  const dis = D.users.map(s => D.P.get(s)).filter(p => !p.enabled && ust.get(p.sid).extra > 0).sort((a, b) => ust.get(b.sid).extra - ust.get(a.sid).extra);
+  add({ id: 'disabled', sev: 'warn', title: 'Disabled accounts with access beyond baseline', count: dis.length,
+    desc: 'The account is disabled, but via groups or explicit entries it still has more access than any domain user. A risk if re-enabled; better remove it from groups.',
+    cols: ['User', 'Max level', 'Folders beyond baseline', 'Via', 'Last logon'],
+    rows: dis.map(p => [pLink(p.sid), lvBadge(userMax.get(p.sid)), fmtN(ust.get(p.sid).extra), ust.get(p.sid).via.join(', '), fmtDate(p.lastLogon) || 'never']),
+    csv: dis.map(p => [p.full, LV[userMax.get(p.sid)].n, ust.get(p.sid).extra, ust.get(p.sid).via.join('; '), p.lastLogon]) });
+
+  // 3. stale enabled users
+  const stale = D.users.map(s => D.P.get(s)).filter(p => p.enabled && ust.get(p.sid).extra > 0 && (!p.lastLogon || (snap - new Date(p.lastLogon)) / 864e5 > 90));
+  add({ id: 'stale', sev: 'warn', title: 'Enabled accounts with no logon > 90 days but with access', count: stale.length,
+    desc: 'Enabled but unused accounts with access beyond baseline. Candidates for disabling.',
+    cols: ['User', 'Last logon', 'Max level', 'Folders beyond baseline', 'Via', 'Description'],
+    rows: stale.map(p => [pLink(p.sid), fmtDate(p.lastLogon) || 'never', lvBadge(userMax.get(p.sid)), fmtN(ust.get(p.sid).extra), ust.get(p.sid).via.join(', '), p.desc || p.title || '']),
+    csv: stale.map(p => [p.full, p.lastLogon, LV[userMax.get(p.sid)].n, ust.get(p.sid).extra, p.desc]) });
+
+  // 4. direct user ACEs
+  const du = [];
+  for (const [sid, ex] of D.explicitBySid) { const p = D.P.get(sid); if (p && p.type === 'user') du.push({ p, ex }); }
+  du.sort((a, b) => b.ex.length - a.ex.length);
+  add({ id: 'directuser', sev: 'warn', title: 'Permissions granted directly to users instead of groups', count: du.length,
+    desc: 'Explicit ACL entries for individual users. Hard to maintain and revoke - use groups instead.',
+    cols: ['User', 'Explicit entries', 'Rights', 'Example'],
+    rows: du.map(r => [pLink(r.p.sid), r.ex.length, [...new Set(r.ex.map(x => (x.ace.allow ? '' : 'Deny ') + rightsName(x.ace.m, x.ace.rights)))].slice(0, 3).join('; '), fLink(r.ex[0].f)]),
+    csv: du.flatMap(r => r.ex.map(x => [r.p.full, x.ace.allow ? 'Allow' : 'Deny', rightsName(x.ace.m, x.ace.rights), pathOf(x.f)])), csvHead: ['User', 'Type', 'Rights', 'Folder'] });
+
+  // 5. baseline: what any domain user gets
+  const bEnt = []; const bc = [0, 0, 0, 0, 0, 0];
+  for (let i = 1; i <= D.N; i++) { const l = base.lv[i]; if (l >= 2) { bc[l]++; if (isEntry(base, i, 2)) bEnt.push(i); } }
+  bEnt.sort((a, b) => base.lv[b] - base.lv[a] || pathOf(a).localeCompare(pathOf(b)));
+  const bVia = i => { const r = base.res[D.acl[i]]; if (!r) return ''; const m = new Map(); for (const x of r.gs) m.set(x.sid, (m.get(x.sid) || x.inh) && x.inh); return [...m].map(([sd, inh]) => pShort(sd) + (inh ? (i === D.root ? ' (inherited from drive)' : ' (inherited)') : ' (explicit)')).join(', '); };
+  add({ id: 'broad', sev: bc[4] + bc[5] ? 'crit' : 'warn', title: 'Access for any domain user (Everyone / Authenticated Users / Domain Users / Users)', count: bEnt.length,
+    desc: `Without any group membership every domain user has: full - ${fmtN(bc[5])}, modify - ${fmtN(bc[4])}, write - ${fmtN(bc[3])}, read - ${fmtN(bc[2])} folders. Below are the points where this access appears. Check that these folders are really meant to be shared. Full tree: principal "Any domain user" (Principal access tab, Other).`,
+    cols: ['Folder', 'Level', 'Via', 'Subfolders'],
+    rows: bEnt.map(i => [fLink(i), lvBadge(base.lv[i]), bVia(i), fmtN(D.subSize[i] - 1)]),
+    csv: bEnt.map(i => [pathOf(i), LV[base.lv[i]].n, bVia(i), D.subSize[i] - 1]) });
+
+  // 6. non-admin full control
+  const fc = [];
+  for (const [sid, ex] of D.explicitBySid) {
+    if (admins.has(sid)) continue;
+    const hits = ex.filter(x => x.ace.allow && !x.ace.io && (x.ace.m & 0xC0000));
+    if (hits.length) fc.push({ sid, hits });
+  }
+  fc.sort((a, b) => b.hits.length - a.hits.length);
+  add({ id: 'fullctl', sev: 'crit', title: 'Full control (can change permissions) for non-admins', count: fc.length,
+    desc: 'Explicit entries allowing permission/owner changes for principals outside Administrators/Domain Admins. They can grant access to anyone themselves.',
+    cols: ['Who', 'Type', 'Folders', 'Example'],
+    rows: fc.map(r => [pLink(r.sid), D.P.get(r.sid)?.type || '', r.hits.length, fLink(r.hits[0].f)]),
+    csv: fc.flatMap(r => r.hits.map(x => [pName(r.sid), rightsName(x.ace.m, x.ace.rights), pathOf(x.f)])), csvHead: ['Who', 'Rights', 'Folder'] });
+
+  // 6b. creator owner -> inherited full control for users
+  const coBy = new Map();
+  for (const id of D.aclIds) for (const a of D.ACL[id]) {
+    if (!a.inh || a.io || !a.allow || !(a.m & 0xC0000)) continue;
+    const p = D.P.get(a.sid); if (!p || p.type !== 'user' || admins.has(a.sid)) continue;
+    coBy.set(a.sid, (coBy.get(a.sid) || 0) + D.aclFolders[id]);
+  }
+  const coRows = [...coBy].sort((a, b) => b[1] - a[1]);
+  const hasCO = D.ACL[D.acl[D.root]]?.some(a => a.sid === WK.CREATOR && a.allow && (a.m & 0xC0000));
+  add({ id: 'creator', sev: 'warn', title: 'Folder creators with full control (CREATOR OWNER)', count: coRows.length,
+    desc: (hasCO ? 'The root has a "CREATOR OWNER: Full control" entry. ' : '') + 'So whoever creates a folder gets full control over it and everything inside, including changing permissions. These entries are inherited and do not show up as direct permissions. Usually better replaced with Modify or removed.',
+    cols: ['User', 'Folders with full control', 'Account'],
+    rows: coRows.map(([sd, n]) => { const p = D.P.get(sd); return [pLink(sd), fmtN(n), p.enabled ? 'active' : el('span', { class: 'tag off' }, 'disabled')]; }),
+    csv: coRows.map(([sd, n]) => [pName(sd), n, D.P.get(sd).enabled ? 'active' : 'disabled']) });
+
+  // 7. deny entries
+  const dn = [];
+  for (const [sid, ex] of D.explicitBySid) for (const x of ex) if (!x.ace.allow) dn.push({ sid, x });
+  const dnBy = new Map(); for (const r of dn) { const k = r.sid + '|' + r.x.ace.m; (dnBy.get(k) || dnBy.set(k, []).get(k)).push(r); }
+  const dnRows = [...dnBy.values()].sort((a, b) => b.length - a.length);
+  add({ id: 'deny', sev: 'info', title: 'Explicit Deny entries', count: dn.length,
+    desc: 'Deny makes permissions harder to reason about. A common pattern is "Domain Users: Deny Delete" as protection against deletion.',
+    cols: ['Who', 'Denied', 'Folders', 'Example'],
+    rows: dnRows.map(g => [pLink(g[0].sid), rightsName(g[0].x.ace.m, g[0].x.ace.rights), g.length, fLink(g[0].x.f)]),
+    csv: dn.map(r => [pName(r.sid), rightsName(r.x.ace.m, r.x.ace.rights), applyTo(r.x.ace), pathOf(r.x.f)]), csvHead: ['Who', 'Denied', 'Applies to', 'Folder'] });
+
+  // 8. inheritance disabled
+  const inh = []; for (let i = 1; i <= D.N; i++) if (D.inhOff[i] && i !== D.root) inh.push(i);
+  const topInh = inh.filter(i => !ancestors(i).some(a => a !== D.root && D.inhOff[a]));
+  add({ id: 'inh', sev: 'info', title: 'Folders with inheritance disabled', count: inh.length,
+    desc: `${fmtN(inh.length)} in total, ${fmtN(topInh.length)} of them top-level (no such folder above). The table lists top-level ones; the full list is in the CSV.`,
+    cols: ['Folder', 'Depth', 'Subfolders', 'Explicit entries'],
+    rows: topInh.sort((a, b) => pathOf(a).localeCompare(pathOf(b))).map(i => [fLink(i), D.depth[i], fmtN(D.subSize[i] - 1), D.explicit[i]]),
+    csv: inh.map(i => [pathOf(i), D.depth[i], D.subSize[i] - 1, D.explicit[i]]), csvHead: ['Folder', 'Depth', 'Subfolders', 'Explicit entries'] });
+
+  // 9. redundant explicit ACEs
+  const redAcl = new Map();
+  for (const id of D.aclIds) {
+    const aces = D.ACL[id]; const inhA = aces.filter(a => a.inh);
+    for (const e of aces) if (!e.inh && inhA.some(x => x.sid === e.sid && x.allow === e.allow && (x.m & e.m) === e.m && x.ci === e.ci && x.oi === e.oi && !x.io)) {
+      (redAcl.get(id) || redAcl.set(id, []).get(id)).push(e);
+    }
+  }
+  const redBy = new Map();
+  for (const [id, es] of redAcl) for (const e of es) { const k = e.sid; const o = redBy.get(k) || redBy.set(k, { n: 0, ex: 0 }).get(k); o.n += D.aclFolders[id]; }
+  const redFolders = []; for (let i = 1; i <= D.N; i++) if (redAcl.has(D.acl[i])) redFolders.push(i);
+  const redRows = [...redBy.entries()].sort((a, b) => b[1].n - a[1].n);
+  add({ id: 'redundant', sev: 'info', title: 'Redundant explicit entries (duplicate inherited ones)', count: redFolders.length,
+    desc: 'The explicit entry grants what is already inherited. Harmless, but clutters ACLs and complicates audits - candidates for cleanup.',
+    cols: ['Who', 'Folders with duplicate'],
+    rows: redRows.map(([s, o]) => [pLink(s), fmtN(o.n)]),
+    csv: redFolders.map(i => [pathOf(i), redAcl.get(D.acl[i]).map(e => pName(e.sid)).join('; ')]), csvHead: ['Folder', 'Duplicate entries'] });
+
+  // 10. owners
+  const ownCnt = new Map(); for (let i = 1; i <= D.N; i++) { const o = D.owner[i]; if (o >= 0) ownCnt.set(o, (ownCnt.get(o) || 0) + 1); }
+  const ownRows = [...ownCnt.entries()].map(([k, n]) => ({ sid: D.ownerSids[k], n })).filter(r => !admins.has(r.sid)).sort((a, b) => b.n - a.n);
+  add({ id: 'owners', sev: 'info', title: 'Folder owners who are not administrators', count: ownRows.length,
+    desc: 'The owner can always change permissions on their folder, even without an explicit permission. Usually the folder creator.',
+    cols: ['Owner', 'Folders', 'Account'],
+    rows: ownRows.map(r => { const p = D.P.get(r.sid); return [pLink(r.sid), fmtN(r.n), p ? (p.type === 'orphan' ? el('span', { class: 'tag off' }, 'deleted') : p.type === 'user' && !p.enabled ? el('span', { class: 'tag off' }, 'disabled') : p.type) : '']; }),
+    csv: ownRows.map(r => [pName(r.sid), r.n]), csvHead: ['Owner', 'Folders'] });
+
+  // 11. unused / empty groups in ACLs
+  const emptyG = [...D.aclSids].map(s => D.P.get(s)).filter(p => p && p.type === 'group' && !p.sid.startsWith('S-1-5-32-') && recursiveUsers(p.sid).size === 0);
+  add({ id: 'emptyg', sev: 'info', title: 'Groups in ACLs without users', count: emptyG.length,
+    desc: 'The group is used in permissions but contains no users (including nested groups).',
+    cols: ['Group', 'Explicit entries'],
+    rows: emptyG.map(p => [pLink(p.sid), (D.explicitBySid.get(p.sid) || []).length]),
+    csv: emptyG.map(p => [p.full, (D.explicitBySid.get(p.sid) || []).length]) });
+
+  // 12. errors
+  const er = D.errorsRows.filter(r => r.Stage === 'ACL' || r.Stage === 'ListDirs');
+  const erPaths = [...new Set(er.map(r => r.Path))];
+  add({ id: 'errors', sev: erPaths.length ? 'warn' : 'info', title: 'Folders that could not be read during collection', count: erPaths.length,
+    desc: 'The collecting account has no access to these folders (usually an explicit deny or Administrators missing from the ACL). Their contents and permissions are not in the audit.',
+    cols: ['Folder', 'Error'],
+    rows: erPaths.map(p => [el('span', { class: 'mono' }, p), er.filter(r => r.Path === p).map(r => r.Stage).join(', ')]),
+    csv: D.errorsRows.map(r => [r.Path, r.Stage, r.Message]), csvHead: ['Folder', 'Stage', 'Message'] });
+
+  return I;
+}
+function drawIssues(host, I) {
+  host.innerHTML = '';
+  host.append(el('h2', null, 'Findings'), el('div', { class: 'hint' }, `Snapshot ${fmtDate(D.meta.EndUtc)} · ${D.name[D.root]} · click a folder to open it in the tree, a name to see that principal's access.`));
+  const grid = el('div', { class: 'sumgrid' });
+  for (const it of I) if (it.count && it.id !== 'env') grid.append(el('div', { class: 'sumc ' + it.sev, onclick: () => { const d = document.getElementById('iss-' + it.id); d.open = true; d.scrollIntoView({ behavior: 'smooth' }); } }, el('b', null, fmtN(it.count)), el('span', null, it.title)));
+  host.append(grid);
+  const order = { crit: 0, warn: 1, info: 2 };
+  for (const it of [...I].sort((a, b) => (a.id === 'env' ? -1 : b.id === 'env' ? 1 : order[a.sev] - order[b.sev]))) {
+    const d = el('details', { class: 'iss', id: 'iss-' + it.id, open: it.id === 'env' && it.count ? true : null });
+    const sum = el('summary', null, el('span', { class: 'sev ' + it.sev }), el('b', null, it.title), el('span', { class: 'tag' }, fmtN(it.count)));
+    const body = el('div', { class: 'body' }, el('p', { class: 'desc' }, it.desc));
+    if (it.rows.length) {
+      const MAX = 500;
+      const tb = el('tbody', null, it.rows.slice(0, MAX).map(r => el('tr', null, r.map(v => el('td', null, v)))));
+      body.append(el('div', { class: 'tblwrap' }, el('table', { class: 't' }, el('thead', null, el('tr', null, it.cols.map(c => el('th', null, c)))), tb)));
+      const bar = el('div', { style: 'display:flex;gap:8px;align-items:center;margin-top:8px' });
+      if (it.rows.length > MAX) bar.append(el('span', { class: 'hint' }, `Showing ${MAX} of ${fmtN(it.rows.length)}.`));
+      bar.append(el('button', { class: 'btn small', onclick: () => downloadCSV(`issue_${it.id}.csv`, it.csvHead || it.cols, it.csv) }, 'CSV'));
+      body.append(bar);
+    } else body.append(el('div', { class: 'hint' }, 'None found.'));
+    d.append(sum, body); host.append(d);
+  }
+}
+
+/* ====================================================================
+   Minimal styled XLSX writer (uses inlined JSZip)
+   ==================================================================== */
+const XS = { def: 0, title: 1, header: 2, cell: 3, label: 4, lv5: 5, lv4: 6, lv3: 7, lv2: 8, lv1: 9, lv0: 10, num: 11, muted: 12, sub: 13, red: 14, lvu: 15, bold: 16, wrap: 17, note: 18 };
+const XS_LV = { 5: XS.lv5, 4: XS.lv4, 3: XS.lv3, 2: XS.lv2, 1: XS.lv1, 0: XS.lv0, '-1': XS.lvu };
+const LV_EN = { '-1': 'No data', 0: 'None', 1: 'Traverse', 2: 'Read', 3: 'Write', 4: 'Modify', 5: 'Full' };
+function xEsc(s) { return String(s ?? '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function xCol(n) { let s = ''; n++; while (n) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="10">
+<font><sz val="11"/><color rgb="FF1C2430"/><name val="Calibri"/><family val="2"/></font>
+<font><b/><sz val="16"/><color rgb="FF1F3864"/><name val="Calibri"/><family val="2"/></font>
+<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>
+<font><b/><sz val="11"/><color rgb="FF1C2430"/><name val="Calibri"/><family val="2"/></font>
+<font><sz val="11"/><color rgb="FF66707D"/><name val="Calibri"/><family val="2"/></font>
+<font><b/><sz val="11"/><color rgb="FF3D3000"/><name val="Calibri"/><family val="2"/></font>
+<font><i/><sz val="10"/><color rgb="FF66707D"/><name val="Calibri"/><family val="2"/></font>
+<font><b/><sz val="12"/><color rgb="FF1F3864"/><name val="Calibri"/><family val="2"/></font>
+<font><b/><sz val="11"/><color rgb="FFC92A2A"/><name val="Calibri"/><family val="2"/></font>
+<font><sz val="11"/><color rgb="FF495057"/><name val="Calibri"/><family val="2"/></font>
+</fonts>
+<fills count="10">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF1F3864"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFC92A2A"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFE8590C"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFF5C84C"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF2B8A3E"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFCED4DA"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFF1F3F5"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFF3F6FB"/><bgColor indexed="64"/></patternFill></fill>
+</fills>
+<borders count="2">
+<border><left/><right/><top/><bottom/><diagonal/></border>
+<border><left style="thin"><color rgb="FFD0D7DE"/></left><right style="thin"><color rgb="FFD0D7DE"/></right><top style="thin"><color rgb="FFD0D7DE"/></top><bottom style="thin"><color rgb="FFD0D7DE"/></bottom><diagonal/></border>
+</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="19">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="top"/></xf>
+<xf numFmtId="0" fontId="3" fillId="9" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="top"/></xf>
+<xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>
+<xf numFmtId="0" fontId="2" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>
+<xf numFmtId="0" fontId="5" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>
+<xf numFmtId="0" fontId="2" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>
+<xf numFmtId="0" fontId="9" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>
+<xf numFmtId="0" fontId="4" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>
+<xf numFmtId="3" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment vertical="top"/></xf>
+<xf numFmtId="0" fontId="6" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf>
+<xf numFmtId="0" fontId="7" fillId="0" borderId="0" xfId="0" applyFont="1"/>
+<xf numFmtId="0" fontId="8" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="top"/></xf>
+<xf numFmtId="0" fontId="2" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="top"/></xf>
+<xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="top"/></xf>
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment wrapText="1" vertical="top"/></xf>
+<xf numFmtId="0" fontId="6" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="center"/></xf>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+/* sheet = { name, widths:[..], rows:[[cell..]], heights:{rowIdx:ht}, freeze:nRows, filter:{row, c1, c2, last}, merges:['A1:D1'] }
+   cell = null | string | number | { v, s } */
+function sheetXml(sh) {
+  const out = [];
+  out.push('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">');
+  out.push('<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>');
+  out.push('<sheetViews><sheetView workbookViewId="0"' + (sh.tabSelected ? ' tabSelected="1"' : '') + '>');
+  if (sh.freeze) out.push(`<pane ySplit="${sh.freeze}" topLeftCell="A${sh.freeze + 1}" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A${sh.freeze + 1}" sqref="A${sh.freeze + 1}"/>`);
+  out.push('</sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/>');
+  if (sh.widths) out.push('<cols>' + sh.widths.map((w, k) => `<col min="${k + 1}" max="${k + 1}" width="${w}" customWidth="1"/>`).join('') + '</cols>');
+  out.push('<sheetData>');
+  sh.rows.forEach((row, ri) => {
+    const r = ri + 1;
+    const ht = sh.heights && sh.heights[ri];
+    let x = `<row r="${r}"${ht ? ` ht="${ht}" customHeight="1"` : ''}>`;
+    row.forEach((cell, ci) => {
+      if (cell == null || cell === '') return;
+      let v = cell, s = XS.cell;
+      if (typeof cell === 'object') { v = cell.v; s = cell.s ?? XS.cell; if (v == null || v === '') { x += `<c r="${xCol(ci)}${r}" s="${s}"/>`; return; } }
+      if (typeof v === 'number' && isFinite(v)) x += `<c r="${xCol(ci)}${r}" s="${s}"><v>${v}</v></c>`;
+      else x += `<c r="${xCol(ci)}${r}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${xEsc(v)}</t></is></c>`;
+    });
+    out.push(x + '</row>');
+  });
+  out.push('</sheetData>');
+  if (sh.filter) out.push(`<autoFilter ref="${xCol(sh.filter.c1)}${sh.filter.row}:${xCol(sh.filter.c2)}${sh.filter.last}"/>`);
+  if (sh.merges && sh.merges.length) out.push(`<mergeCells count="${sh.merges.length}">` + sh.merges.map(m => `<mergeCell ref="${m}"/>`).join('') + '</mergeCells>');
+  out.push('<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/><pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>');
+  out.push('</worksheet>');
+  return out.join('');
+}
+async function buildXlsx(sheets) {
+  const z = new JSZip();
+  const names = sheets.map((s, k) => (s.name.replace(/[\[\]:*?\/\\]/g, ' ').slice(0, 31)) || 'Sheet' + (k + 1));
+  z.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((s, k) => `<Override PartName="/xl/worksheets/sheet${k + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`);
+  z.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`);
+  const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  z.file('docProps/core.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>FS Audit access report</dc:title><dc:creator>FS Audit Viewer</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created></cp:coreProperties>`);
+  z.file('docProps/app.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>FS Audit Viewer</Application></Properties>`);
+  const defNames = sheets.map((s, k) => s.filter ? `<definedName name="_xlnm._FilterDatabase" localSheetId="${k}" hidden="1">'${names[k].replace(/'/g, "''")}'!$${xCol(s.filter.c1)}$${s.filter.row}:$${xCol(s.filter.c2)}$${s.filter.last}</definedName>` : '').join('');
+  z.file('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets>${names.map((n, k) => `<sheet name="${xEsc(n)}" sheetId="${k + 1}" r:id="rId${k + 1}"/>`).join('')}</sheets>${defNames ? '<definedNames>' + defNames + '</definedNames>' : ''}</workbook>`);
+  z.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((s, k) => `<Relationship Id="rId${k + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${k + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
+  z.file('xl/styles.xml', STYLES_XML);
+  sheets.forEach((s, k) => z.file(`xl/worksheets/sheet${k + 1}.xml`, sheetXml({ ...s, tabSelected: k === 0 })));
+  return z.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 }, mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+function saveBlob(blob, name) {
+  const a = el('a', { href: URL.createObjectURL(blob), download: name });
+  document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+}
+/* table block helper: returns rows and filter info */
+function tableBlock(startRow, header, data) {
+  return { rows: [header.map(h => ({ v: h, s: XS.header })), ...data], filter: { row: startRow, c1: 0, c2: header.length - 1, last: startRow + Math.max(data.length, 1) } };
+}
+
+/* ====================================================================
+   Principal access report (Excel)
+   ==================================================================== */
+async function exportPrincipalXlsx(sid) {
+  toast('Building Excel…'); await tick(); await new Promise(r => setTimeout(r, 30));
+  const t0 = performance.now();
+  const c = compute(sid); const p = D.P.get(sid);
+  const typeName = { user: 'User', group: 'Group', wk: 'Built-in / well-known', orphan: 'Deleted account (unresolved SID)', computer: 'Computer' }[p.type] || p.type;
+  const snap = fmtDate(D.meta.EndUtc);
+  const viaCache = new Map();
+  const viaOf = a => {
+    if (!a) return '';
+    let v = viaCache.get(a); if (v != null) return v;
+    const r = c.res[a]; v = r ? [...new Set(r.gs.map(x => x.sid))].map(s => chainText(c.tok, s, sid)).join('; ') : '';
+    viaCache.set(a, v); return v;
+  };
+  const lvCell = l => ({ v: LV_EN[l], s: XS_LV[l] });
+  const pad = n => (n < 10 ? '0' : '') + n;
+  const fmtD = s => { if (!s) return ''; const d = new Date(s); if (isNaN(d)) return s; return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const P_ = new Map(); const pth = i => { let v = P_.get(i); if (v == null) { v = pathOf(i); P_.set(i, v); } return v; };
+  const coll = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+  // counts
+  const cnt = { 5: 0, 4: 0, 3: 0, 2: 0 }; let nDeny = 0, nEntry = 0, nUnknown = 0;
+  const all = [], entries = [];
+  for (let i = 1; i <= D.N; i++) {
+    if (!D.exists[i]) continue;
+    const l = c.lv[i];
+    if (l === -1 && D.parent[i] && c.lv[D.parent[i]] >= 2) nUnknown++;
+    if (l < 2) continue;
+    cnt[l]++;
+    const a = D.acl[i]; const r = a ? c.res[a] : null;
+    const deny = !!(r && r.ds.length); if (deny) nDeny++;
+    all.push(i);
+    if (isEntry(c, i, 2)) { nEntry++; entries.push(i); }
+  }
+  // build paths top-down (cheap), then sort
+  const fullPath = new Array(D.N + 1);
+  for (const i of D.order) fullPath[i] = D.parent[i] ? fullPath[D.parent[i]] + '\\' + D.name[i] : D.name[i];
+  for (const i of all) P_.set(i, fullPath[i]);
+  const byPath = (x, y) => coll.compare(P_.get(x), P_.get(y));
+  all.sort(byPath); entries.sort(byPath);
+
+  // groups granting
+  const grantCount = new Map(), grantMax = new Map();
+  for (const id of D.aclIds) {
+    const r = c.res[id]; const l = c.lvA[id]; if (!r || l < 2) continue;
+    for (const s of new Set(r.gs.map(x => x.sid))) { grantCount.set(s, (grantCount.get(s) || 0) + D.aclFolders[id]); grantMax.set(s, Math.max(grantMax.get(s) || 0, l)); }
+  }
+
+  /* ---- Summary ---- */
+  const S1 = { name: 'Summary', widths: [44, 56, 14, 14], rows: [], merges: ['A1:D1', 'A2:D2'], heights: { 0: 26 } };
+  const R = S1.rows;
+  R.push([{ v: 'Access report - ' + p.name, s: XS.title }]);
+  R.push([{ v: `${D.name[D.root]} · snapshot ${snap}${D.meta.Computer ? ' · ' + D.meta.Computer : ''} · generated ${fmtDate(new Date().toISOString())}`, s: XS.muted }]);
+  R.push([]);
+  const kv = (k, v, s) => R.push([{ v: k, s: XS.label }, v && typeof v === 'object' ? v : { v: v ?? '', s: s ?? XS.cell }]);
+  R.push([{ v: 'Principal', s: XS.sub }]);
+  kv('Name', p.name, XS.bold);
+  kv('Account', p.full || p.name);
+  kv('Type', typeName + (p.scope ? ' (' + p.scope + ')' : ''));
+  if (p.type === 'user') {
+    kv('Status', p.enabled ? 'Enabled' : 'Disabled', p.enabled ? XS.cell : XS.red);
+    if (p.dept) kv('Department', p.dept);
+    if (p.title) kv('Title', p.title);
+    kv('Last logon', fmtD(p.lastLogon) || 'never');
+  }
+  if (p.desc) kv('Description', p.desc);
+  if (p.sid !== '__ANY__') kv('SID', p.sid);
+  R.push([]);
+  R.push([{ v: 'Access summary (folders)', s: XS.sub }]);
+  kv('Folders with access (read or higher)', { v: all.length, s: XS.num });
+  for (const l of [5, 4, 3, 2]) R.push([lvCell(l), { v: cnt[l], s: XS.num }, { v: { 5: 'full control, can change permissions', 4: 'modify incl. delete', 3: 'create/write, no delete', 2: 'read / list' }[l], s: XS.note }]);
+  kv('Entry points', { v: nEntry, s: XS.num });
+  kv('Folders where a Deny applies', { v: nDeny, s: XS.num });
+  if (nUnknown) kv('Unreadable folders under accessible ones', { v: nUnknown, s: XS.num });
+  if (c.cap < 5) kv('Limited by share permissions to', LV_EN[c.cap], XS.red);
+  R.push([]);
+  R.push([{ v: 'Access is granted via', s: XS.sub }]);
+  const viaRows = [...grantCount.keys()].sort((a, b) => grantCount.get(b) - grantCount.get(a));
+  R.push([{ v: 'Group / identity', s: XS.header }, { v: 'Membership path', s: XS.header }, { v: 'Folders', s: XS.header }, { v: 'Highest level', s: XS.header }]);
+  for (const s of viaRows) R.push([{ v: s === sid ? '(direct)' : pName(s), s: XS.cell }, { v: chainText(c.tok, s, sid), s: XS.cell }, { v: grantCount.get(s), s: XS.num }, lvCell(grantMax.get(s))]);
+  if (!viaRows.length) R.push([{ v: 'No access', s: XS.muted }]);
+  R.push([]);
+  R.push([{ v: 'Notes', s: XS.sub }]);
+  const notes = [
+    '"Entry points" sheet: the top folders where access starts (or comes via a different group). Everything below them is accessible unless stated otherwise.',
+    '"All folders" sheet: every folder with read access or higher. Use the filters in the header row.',
+    'Effective rights are calculated from NTFS ACLs (explicit + inherited, Deny before Allow), nested AD group membership incl. Domain Users / Everyone / Authenticated Users, and share permissions.',
+    'Folder level only: permissions on individual files are not evaluated. Snapshot from ' + snap + '.',
+  ];
+  for (const n of notes) { R.push([{ v: n, s: XS.muted }]); S1.merges.push(`A${R.length}:D${R.length}`); S1.heights[R.length - 1] = 30; }
+
+  const sheets = [S1];
+
+  /* ---- Entry points ---- */
+  {
+    const hdr = ['Folder', 'Level', 'Via', 'Deny', 'Subfolders', 'Files', 'Last modified'];
+    const data = entries.map(i => { const a = D.acl[i]; const r = a ? c.res[a] : null; return [{ v: pth(i), s: XS.cell }, lvCell(c.lv[i]), { v: viaOf(a), s: XS.cell }, { v: r && r.ds.length ? 'yes' : '', s: XS.red }, { v: D.subSize[i] - 1, s: XS.num }, { v: Math.max(0, D.files[i]), s: XS.num }, { v: fmtD(D.lw[i]), s: XS.cell }]; });
+    const tbl = tableBlock(1, hdr, data);
+    sheets.push({ name: 'Entry points', widths: [90, 11, 46, 7, 12, 9, 18], rows: tbl.rows, freeze: 1, filter: tbl.filter });
+  }
+  /* ---- All folders ---- */
+  {
+    const hdr = ['Folder', 'Name', 'Depth', 'Level', 'Via', 'Deny', 'Inheritance off', 'Files', 'Last modified'];
+    const data = all.map(i => { const a = D.acl[i]; const r = a ? c.res[a] : null; return [{ v: pth(i), s: XS.cell }, { v: D.name[i], s: XS.cell }, { v: D.depth[i], s: XS.num }, lvCell(c.lv[i]), { v: viaOf(a), s: XS.cell }, { v: r && r.ds.length ? 'yes' : '', s: XS.red }, { v: D.inhOff[i] ? 'yes' : '', s: XS.cell }, { v: Math.max(0, D.files[i]), s: XS.num }, { v: fmtD(D.lw[i]), s: XS.cell }]; });
+    const tbl = tableBlock(1, hdr, data);
+    sheets.push({ name: 'All folders', widths: [90, 32, 7, 11, 46, 7, 10, 9, 18], rows: tbl.rows, freeze: 1, filter: tbl.filter });
+  }
+  /* ---- Group membership ---- */
+  {
+    const groups = [...c.tok.keys()].filter(s => s !== sid);
+    if (groups.length) {
+      const hdr = ['Group', 'Type', 'Membership', 'Path', 'Grants access to folders'];
+      const data = groups.sort((a, b) => pName(a).localeCompare(pName(b), undefined)).map(g => {
+        const prev = c.tok.get(g); const gp = D.P.get(g);
+        return [{ v: pName(g), s: XS.cell }, { v: gp ? (gp.scope || gp.type) : '', s: XS.cell }, { v: prev === sid ? 'direct' : prev === '*' ? 'implicit (all users)' : 'nested', s: XS.cell }, { v: chainText(c.tok, g, sid), s: XS.cell }, { v: grantCount.get(g) || 0, s: XS.num }];
+      });
+      const tbl = tableBlock(1, hdr, data);
+      sheets.push({ name: 'Groups', widths: [40, 16, 18, 60, 14], rows: tbl.rows, freeze: 1, filter: tbl.filter });
+    }
+  }
+  /* ---- Members (for groups) ---- */
+  if (p.type === 'group' || D.membersOf.has(sid)) {
+    const users = [...recursiveUsers(sid)].map(s => D.P.get(s)).sort((a, b) => a.name.localeCompare(b.name, undefined));
+    const direct = new Set(D.membersOf.get(sid) || []);
+    const hdr = ['User', 'Account', 'Department', 'Status', 'Last logon', 'Membership'];
+    const data = users.map(u => [{ v: u.name, s: XS.cell }, { v: u.full, s: XS.cell }, { v: u.dept || '', s: XS.cell }, { v: u.enabled ? 'Enabled' : 'Disabled', s: u.enabled ? XS.cell : XS.red }, { v: fmtD(u.lastLogon) || 'never', s: XS.cell }, { v: direct.has(u.sid) ? 'direct' : 'nested', s: XS.cell }]);
+    const tbl = tableBlock(1, hdr, data);
+    sheets.push({ name: 'Members', widths: [30, 30, 24, 10, 18, 12], rows: tbl.rows, freeze: 1, filter: tbl.filter });
+  }
+  const blob = await buildXlsx(sheets);
+  const nm = safeName(p.type === 'user' ? p.sam : pShort(sid)).replace(/\s+/g, '_');
+  saveBlob(blob, `Access_${nm}_${(D.meta.EndUtc || '').slice(0, 10)}.xlsx`);
+  console.log('xlsx ms', Math.round(performance.now() - t0), 'rows', all.length, 'bytes', blob.size);
+  toast('Excel saved');
+}
+
+/* ====================================================================
+   Boot
+   ==================================================================== */
+(function boot() {
+  const drop = $('#drop'), file = $('#file');
+  $('#pickBtn').onclick = () => file.click();
+  file.onchange = () => file.files.length && loadFiles([...file.files]);
+  ['dragenter', 'dragover'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('drag'); }));
+  ['dragleave', 'drop'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); if (ev === 'drop' || e.target === document.documentElement) drop.classList.remove('drag'); }));
+  document.addEventListener('drop', e => { const f = [...(e.dataTransfer?.files || [])]; if (f.length && !D) loadFiles(f); });
+  $('#reloadBtn').onclick = () => location.reload();
+  try { const w = localStorage.getItem('fsa-detw'); if (w) document.documentElement.style.setProperty('--detw', w.trim()); } catch (e) {}
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !D || e.target.matches('input, select, textarea')) return;
+    if (S.tab === 'tree' && $('#v-tree').classList.contains('det')) { closeDetails('tree'); return; }
+    if (S.tab === 'folders' && $('#v-folders').classList.contains('det')) { closeDetails('folders'); return; }
+    if (S.tab === 'compare' && $('#v-compare').classList.contains('det')) { closeDetails('compare'); return; }
+    if ((S.tab === 'tree' || S.tab === 'graph') && S.sel) deselect();
+  });
+  let theme = null; try { theme = localStorage.getItem('fsa-theme'); } catch (e) {}
+  if (theme) document.documentElement.dataset.theme = theme;
+  $('#themeBtn').onclick = () => {
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    const cur = document.documentElement.dataset.theme || (dark ? 'dark' : 'light');
+    const nx = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = nx; try { localStorage.setItem('fsa-theme', nx); } catch (e) {}
+    if (D && S.tab === 'graph') renderGraphView();
+  };
+  window.addEventListener('resize', () => { if (D && S.tab === 'graph') { clearTimeout(boot._t); boot._t = setTimeout(renderGraphView, 200); } });
+})();
+</script>
+</body>
+</html>
